@@ -75,10 +75,9 @@ class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
                     )
                 )
 
-                // Send HTTP POST request
+                // Send HTTP POST request (tenantId comes from request body)
                 webTestClient.post()
                     .uri("/api/v1/events")
-                    .header("X-Tenant-Id", testTenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(request)
                     .exchange()
@@ -101,7 +100,6 @@ class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
 
                 webTestClient.post()
                     .uri("/api/v1/events")
-                    .header("X-Tenant-Id", "999999")
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(request)
                     .exchange()
@@ -131,7 +129,6 @@ class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
 
                 webTestClient.post()
                     .uri("/api/v1/events")
-                    .header("X-Tenant-Id", testTenantId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(request)
                     .exchange()

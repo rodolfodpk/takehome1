@@ -16,6 +16,10 @@ import reactor.core.publisher.Mono
 /**
  * REST controller for event ingestion
  * Handles 10,000+ events/second per instance
+ * 
+ * Note: @Valid on Mono<T> parameters works in Spring WebFlux 6.1+
+ * Validation is applied to the deserialized object within the reactive pipeline.
+ * Class-level @Validated is not needed for request body validation.
  */
 @RestController
 @RequestMapping("/api/v1/events")

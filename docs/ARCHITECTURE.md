@@ -14,7 +14,6 @@ src/main/kotlin/com/rdpk/metering/
 │   ├── R2dbcConfig.kt                # R2DBC custom converters (JSONB)
 │   ├── ResilienceConfig.kt           # Resilience4j configuration
 │   ├── RedisConfig.kt                # Redisson client configuration
-│   ├── TenantContextFilter.kt        # Multi-tenancy WebFilter
 │   └── TimeConfig.kt                 # Clock bean for time consistency
 ├── controller/                       # REST API layer
 │   └── EventController.kt           # Event ingestion endpoint
@@ -49,7 +48,7 @@ src/main/kotlin/com/rdpk/metering/
 ├── exception/                       # Exception handling
 │   └── GlobalExceptionHandler.kt    # WebFlux exception handler
 └── util/                            # Utilities
-    └── TenantContext.kt             # Reactor Context utilities
+    (no utilities currently)
 ```
 
 ## System Design
@@ -66,7 +65,6 @@ src/main/kotlin/com/rdpk/metering/
 ┌─────────────────────────────────────┐
 │     EventController (WebFlux)        │
 │  - Validates request                 │
-│  - Extracts X-Tenant-Id header       │
 │  - Returns 201 immediately          │
 └──────┬──────────────────────────────┘
        │
@@ -125,7 +123,7 @@ src/main/kotlin/com/rdpk/metering/
 
 ### 1. Event Ingestion Flow (Hot Path)
 
-1. **Client** → `POST /api/v1/events` with `X-Tenant-Id` header
+1. **Client** → `POST /api/v1/events` with `tenantId` in request body
 2. **EventController** → Validates request, extracts tenant context
 3. **EventProcessingService** → 
    - Validates tenant/customer exist and are active
@@ -228,11 +226,11 @@ src/main/kotlin/com/rdpk/metering/
 
 ### 4. Multi-Tenancy Strategy
 
-**Decision**: Use `X-Tenant-Id` header with Reactor Context propagation and explicit tenant validation.
+**Decision**: Use `tenantId` from request body with explicit tenant validation.
 
 **Rationale**:
-- **Reactive-Friendly**: Works with WebFlux reactive chains
-- **No AOP Overhead**: Direct context propagation is faster
+- **Simple & Direct**: Tenant ID comes from request body (as per requirements)
+- **No AOP Overhead**: Direct validation is faster
 - **Explicit**: Clear tenant isolation at API boundary
 - **R2DBC-Compatible**: R2DBC doesn't support JPA-style automatic filters
 
@@ -268,11 +266,10 @@ While the requirements mention implementing an AOP-based approach (Challenge 1),
    - ✅ Unused methods without tenant filter are never called
 
 **Implementation**:
-- `TenantContextFilter`: Extracts `X-Tenant-Id` header, stores in Reactor Context
-- `TenantContext`: Utility to retrieve tenant ID from Context
-- `EventProcessingService.validateTenant()`: Explicit tenant validation (checks existence and active status)
+- `EventProcessingService.validateTenant()`: Explicit tenant validation from request body (checks existence and active status)
 - `EventProcessingService.validateCustomer()`: Explicit customer validation (includes tenant check)
 - Manual filtering: All repository queries include `tenant_id` filter explicitly
+- Tenant ID comes from `UsageEventRequest.tenantId` (request body)
 
 **Example - Explicit Validation**:
 ```kotlin

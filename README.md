@@ -58,7 +58,7 @@ make test
 - ✅ **Reactive Programming**: Non-blocking architecture with WebFlux/R2DBC
 - ✅ **High Throughput**: Handles 10,000+ events/second per instance
 - ✅ **Distributed State**: Redis-based real-time aggregation with Redisson
-- ✅ **Multi-Tenancy**: Header-based tenant isolation with explicit validation (X-Tenant-Id)
+- ✅ **Multi-Tenancy**: Request body tenant isolation with explicit validation
 - ✅ **Batch Aggregation**: 30-second window processing
 - ✅ **Resilience Patterns**: Circuit breakers, retries, timeouts
 - ✅ **Observability**: Structured logging, metrics, dashboards

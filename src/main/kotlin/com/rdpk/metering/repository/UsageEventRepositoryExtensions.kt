@@ -49,15 +49,33 @@ class UsageEventRepositoryExtensionsImpl(
                       metadata::text as metadata, created, updated
         """
         
-        return databaseClient.sql(sql)
+        val spec = databaseClient.sql(sql)
             .bind("$1", event.eventId)
             .bind("$2", event.tenantId)
             .bind("$3", event.customerId)
             .bind("$4", event.timestamp)
             .bind("$5", event.endpoint)
-            .bind("$6", event.tokens)
-            .bind("$7", event.model)
-            .bind("$8", event.latencyMs)
+        
+        // Handle nullable parameters
+        val specWithTokens = if (event.tokens != null) {
+            spec.bind("$6", event.tokens)
+        } else {
+            spec.bindNull("$6", Int::class.java)
+        }
+        
+        val specWithModel = if (event.model != null) {
+            specWithTokens.bind("$7", event.model)
+        } else {
+            specWithTokens.bindNull("$7", String::class.java)
+        }
+        
+        val specWithLatency = if (event.latencyMs != null) {
+            specWithModel.bind("$8", event.latencyMs)
+        } else {
+            specWithModel.bindNull("$8", Int::class.java)
+        }
+        
+        return specWithLatency
             .bind("$9", metadataJson)
             .map { row, _ ->
                 UsageEvent(
@@ -97,15 +115,33 @@ class UsageEventRepositoryExtensionsImpl(
                     "{}"
                 }
                 
-                databaseClient.sql(sql)
+                val spec = databaseClient.sql(sql)
                     .bind("$1", event.eventId)
                     .bind("$2", event.tenantId)
                     .bind("$3", event.customerId)
                     .bind("$4", event.timestamp)
                     .bind("$5", event.endpoint)
-                    .bind("$6", event.tokens)
-                    .bind("$7", event.model)
-                    .bind("$8", event.latencyMs)
+                
+                // Handle nullable parameters
+                val specWithTokens = if (event.tokens != null) {
+                    spec.bind("$6", event.tokens)
+                } else {
+                    spec.bindNull("$6", Int::class.java)
+                }
+                
+                val specWithModel = if (event.model != null) {
+                    specWithTokens.bind("$7", event.model)
+                } else {
+                    specWithTokens.bindNull("$7", String::class.java)
+                }
+                
+                val specWithLatency = if (event.latencyMs != null) {
+                    specWithModel.bind("$8", event.latencyMs)
+                } else {
+                    specWithModel.bindNull("$8", Int::class.java)
+                }
+                
+                specWithLatency
                     .bind("$9", metadataJson)
                     .map { row, _ ->
                         UsageEvent(
