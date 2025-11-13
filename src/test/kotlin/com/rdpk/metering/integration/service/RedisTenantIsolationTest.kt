@@ -239,9 +239,8 @@ class RedisTenantIsolationTest : AbstractKotestIntegrationTest() {
             tenantId = tenantId,
             customerId = customerId,
             timestamp = timestamp,
-            endpoint = "/api/completion",
-            tokens = tokens,
-            metadata = mapOf(
+            data = mapOf(
+                "endpoint" to "/api/completion",
                 "tokens" to tokens,
                 "inputTokens" to (tokens / 2),
                 "outputTokens" to (tokens / 2)

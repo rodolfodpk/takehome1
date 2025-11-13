@@ -110,29 +110,26 @@ class EventProcessingService(
     
     private fun toUsageEvent(request: UsageEventRequest, customerId: Long): UsageEvent {
         val now = LocalDateTime.now(clock)
+        // Build data JSONB containing all event fields
+        // inputTokens and outputTokens are required (validated at DTO level)
+        val data = buildMap<String, Any> {
+            put("endpoint", request.apiEndpoint)
+            put("inputTokens", request.metadata.inputTokens)
+            put("outputTokens", request.metadata.outputTokens)
+            // Optional fields
+            if (request.metadata.tokens != null) put("tokens", request.metadata.tokens)
+            if (request.metadata.model != null) put("model", request.metadata.model)
+            if (request.metadata.latencyMs != null) put("latencyMs", request.metadata.latencyMs)
+        }
         return UsageEvent(
             eventId = request.eventId,
             tenantId = request.tenantId.toLongOrNull() ?: throw IllegalArgumentException("Invalid tenantId"),
             customerId = customerId,
             timestamp = request.timestamp,
-            endpoint = request.apiEndpoint,
-            tokens = request.metadata.tokens,
-            model = request.metadata.model,
-            latencyMs = request.metadata.latencyMs,
-            metadata = metadataToMap(request.metadata),
+            data = data,
             created = now,
             updated = now
         )
-    }
-    
-    private fun metadataToMap(metadata: EventMetadata): Map<String, Any> {
-        return buildMap {
-            if (metadata.tokens != null) put("tokens", metadata.tokens)
-            if (metadata.model != null) put("model", metadata.model)
-            if (metadata.latencyMs != null) put("latencyMs", metadata.latencyMs)
-            if (metadata.inputTokens != null) put("inputTokens", metadata.inputTokens)
-            if (metadata.outputTokens != null) put("outputTokens", metadata.outputTokens)
-        }
     }
     
     private fun toResponse(request: UsageEventRequest): UsageEventResponse {

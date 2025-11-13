@@ -24,17 +24,8 @@ data class AggregationWindow(
     @Column("window_end")
     val windowEnd: Instant,
     
-    @Column("total_calls")
-    val totalCalls: Long,
-    
-    @Column("total_tokens")
-    val totalTokens: Long,
-    
-    @Column("avg_latency_ms")
-    val avgLatencyMs: Double? = null,
-    
     @Column("aggregation_data")
-    val aggregationData: String, // JSONB as String
+    val aggregationData: String, // JSONB as String - contains: totalCalls, totalTokens, avgLatencyMs, byEndpoint, byModel
     
     @Column("created")
     val created: LocalDateTime? = null,

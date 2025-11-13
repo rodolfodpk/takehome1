@@ -24,11 +24,12 @@ class UsageEventTest : DescribeSpec({
                 tenantId = 1L,
                 customerId = 100L,
                 timestamp = timestamp,
-                endpoint = "/api/completion",
-                tokens = 100,
-                model = "gpt-4",
-                latencyMs = 250,
-                metadata = mapOf("tokens" to 100, "model" to "gpt-4", "latencyMs" to 250),
+                data = mapOf(
+                    "endpoint" to "/api/completion",
+                    "tokens" to 100,
+                    "model" to "gpt-4",
+                    "latencyMs" to 250
+                ),
                 created = now,
                 updated = now
             )
@@ -37,10 +38,10 @@ class UsageEventTest : DescribeSpec({
             event.tenantId shouldBe 1L
             event.customerId shouldBe 100L
             event.timestamp shouldBe timestamp
-            event.endpoint shouldBe "/api/completion"
-            event.tokens shouldBe 100
-            event.model shouldBe "gpt-4"
-            event.latencyMs shouldBe 250
+            event.data["endpoint"] shouldBe "/api/completion"
+            event.data["tokens"] shouldBe 100
+            event.data["model"] shouldBe "gpt-4"
+            event.data["latencyMs"] shouldBe 250
             event.created shouldNotBe null
             event.updated shouldNotBe null
         }
@@ -51,7 +52,7 @@ class UsageEventTest : DescribeSpec({
                 tenantId = 1L,
                 customerId = 100L,
                 timestamp = Instant.now(),
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
             )
             
             val eventWithId = event.withId(999L)
@@ -67,17 +68,12 @@ class UsageEventTest : DescribeSpec({
                 tenantId = 1L,
                 customerId = 100L,
                 timestamp = Instant.now(),
-                endpoint = "/api/completion",
-                tokens = null,
-                model = null,
-                latencyMs = null,
-                metadata = null // Map<String, Any>? can be null
+                data = mapOf("endpoint" to "/api/completion") // data is required, but can have minimal fields
             )
             
-            event.tokens shouldBe null
-            event.model shouldBe null
-            event.latencyMs shouldBe null
-            event.metadata shouldBe null
+            event.data["tokens"] shouldBe null
+            event.data["model"] shouldBe null
+            event.data["latencyMs"] shouldBe null
         }
     }
 })

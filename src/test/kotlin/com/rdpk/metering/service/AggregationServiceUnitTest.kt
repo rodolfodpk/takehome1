@@ -80,16 +80,18 @@ class AggregationLogicTest : DescribeSpec({
         model: String? = "gpt-4",
         latencyMs: Int? = 250
     ): UsageEvent {
+        val data = buildMap<String, Any> {
+            put("endpoint", endpoint)
+            if (tokens != null) put("tokens", tokens)
+            if (model != null) put("model", model)
+            if (latencyMs != null) put("latencyMs", latencyMs)
+        }
         return UsageEvent(
             eventId = "test-event",
             tenantId = 1L,
             customerId = 100L,
             timestamp = Instant.now(),
-            endpoint = endpoint,
-            tokens = tokens,
-            model = model,
-            latencyMs = latencyMs,
-                metadata = emptyMap(),
+            data = data,
             created = LocalDateTime.now(),
             updated = LocalDateTime.now()
         )
@@ -105,10 +107,10 @@ class AggregationLogicTest : DescribeSpec({
             )
             
             val result = events
-                .groupBy { it.endpoint }
+                .groupBy { it.data["endpoint"] as? String ?: "unknown" }
                 .mapValues { (_, eventList) ->
                     val totalCalls = eventList.size.toLong()
-                    val totalTokens = eventList.sumOf { it.tokens?.toLong() ?: 0L }
+                    val totalTokens = eventList.sumOf { (it.data["tokens"] as? Number)?.toLong() ?: 0L }
                     EndpointStats(calls = totalCalls, tokens = totalTokens)
                 }
             
@@ -128,11 +130,11 @@ class AggregationLogicTest : DescribeSpec({
             )
             
             val result = events
-                .filter { it.model != null }
-                .groupBy { it.model!! }
+                .filter { it.data["model"] != null }
+                .groupBy { it.data["model"] as String }
                 .mapValues { (_, eventList) ->
                     val totalCalls = eventList.size.toLong()
-                    val totalTokens = eventList.sumOf { it.tokens?.toLong() ?: 0L }
+                    val totalTokens = eventList.sumOf { (it.data["tokens"] as? Number)?.toLong() ?: 0L }
                     ModelStats(calls = totalCalls, tokens = totalTokens)
                 }
             
@@ -152,7 +154,7 @@ class AggregationLogicTest : DescribeSpec({
             )
             
             val avgLatency = events
-                .mapNotNull { it.latencyMs?.toDouble() }
+                .mapNotNull { (it.data["latencyMs"] as? Number)?.toDouble() }
                 .average()
             
             avgLatency shouldBe 200.0

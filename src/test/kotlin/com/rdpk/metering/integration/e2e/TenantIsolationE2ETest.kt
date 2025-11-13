@@ -63,7 +63,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = tenantA.id!!.toString(),
                     customerId = customerA1.externalId,
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata(tokens = 100, model = "gpt-4")
+                    metadata = EventMetadata(inputTokens = 50, outputTokens = 50, tokens = 100, model = "gpt-4")
                 )
 
                 val eventBId = "e2e-tenant-b-${System.currentTimeMillis()}"
@@ -73,7 +73,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = tenantB.id!!.toString(),
                     customerId = customerB1.externalId,
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata(tokens = 200, model = "gpt-3.5-turbo")
+                    metadata = EventMetadata(inputTokens = 100, outputTokens = 100, tokens = 200, model = "gpt-3.5-turbo")
                 )
 
                 // Send both events
@@ -136,7 +136,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = tenant.id!!.toString(), // tenantId from request body
                     customerId = customer.externalId,
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata(tokens = 150, model = "gpt-4")
+                    metadata = EventMetadata(inputTokens = 75, outputTokens = 75, tokens = 150, model = "gpt-4")
                 )
 
                 // Send event via HTTP
@@ -161,8 +161,8 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                         savedEvent.tenantId shouldBe tenant.id
                         savedEvent.customerId shouldBe customer.id
                         savedEvent.eventId shouldBe eventId
-                        savedEvent.tokens shouldBe 150
-                        savedEvent.model shouldBe "gpt-4"
+                        savedEvent.data["tokens"] shouldBe 150
+                        savedEvent.data["model"] shouldBe "gpt-4"
                     }
                     .verifyComplete()
             }
@@ -183,7 +183,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = tenantA.id!!.toString(),
                     customerId = "customer-1", // Same external ID
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata(tokens = 100)
+                    metadata = EventMetadata(inputTokens = 50, outputTokens = 50, tokens = 100)
                 )
 
                 val eventBId = "e2e-same-customer-b-${System.currentTimeMillis()}"
@@ -193,7 +193,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = tenantB.id!!.toString(),
                     customerId = "customer-1", // Same external ID
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata(tokens = 200)
+                    metadata = EventMetadata(inputTokens = 100, outputTokens = 100, tokens = 200)
                 )
 
                 // Send both events
@@ -223,7 +223,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                         events shouldHaveSize 1
                         events[0].tenantId shouldBe tenantA.id
                         events[0].eventId shouldBe eventAId
-                        events[0].tokens shouldBe 100
+                        events[0].data["tokens"] shouldBe 100
                     }
                     .verifyComplete()
 
@@ -235,7 +235,7 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                         events shouldHaveSize 1
                         events[0].tenantId shouldBe tenantB.id
                         events[0].eventId shouldBe eventBId
-                        events[0].tokens shouldBe 200
+                        events[0].data["tokens"] shouldBe 200
                     }
                     .verifyComplete()
             }

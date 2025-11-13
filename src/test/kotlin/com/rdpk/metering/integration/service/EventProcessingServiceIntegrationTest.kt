@@ -108,7 +108,7 @@ customerRepository.save(customer).block()
                 tenantId = "999", // Non-existent tenant
                 customerId = "customer-2",
                 apiEndpoint = "/api/completion",
-                metadata = EventMetadata()
+                metadata = EventMetadata(inputTokens = 0, outputTokens = 0)
             )
 
             StepVerifier.create(eventProcessingService.processEvent(request))
@@ -137,7 +137,7 @@ customerRepository.save(customer).block()
                 tenantId = testTenantId.toString(),
                 customerId = "non-existent-customer",
                 apiEndpoint = "/api/completion",
-                metadata = EventMetadata()
+                metadata = EventMetadata(inputTokens = 0, outputTokens = 0)
             )
 
             StepVerifier.create(eventProcessingService.processEvent(request))

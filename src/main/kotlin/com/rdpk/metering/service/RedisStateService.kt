@@ -41,10 +41,11 @@ class RedisStateService(
         val inputTokensKey = "metering:tenant:$tenantId:customer:$customerId:inputTokens"
         val outputTokensKey = "metering:tenant:$tenantId:customer:$customerId:outputTokens"
         
-        // Extract token values from metadata
-        val tokens = event.tokens ?: 0
-        val inputTokens = extractInputTokens(event.metadata) ?: 0
-        val outputTokens = extractOutputTokens(event.metadata) ?: 0
+        // Extract token values from data JSONB
+        // inputTokens and outputTokens are required (validated at DTO level)
+        val tokens = (event.data["tokens"] as? Number)?.toInt() ?: 0
+        val inputTokens = (event.data["inputTokens"] as? Number)?.toInt() ?: 0
+        val outputTokens = (event.data["outputTokens"] as? Number)?.toInt() ?: 0
         
         // Use batch for atomic updates
         val batch = redissonReactive.createBatch()
@@ -116,13 +117,6 @@ class RedisStateService(
         )
     }
     
-    private fun extractInputTokens(metadata: Map<String, Any>?): Int? {
-        return metadata?.get("inputTokens") as? Int
-    }
-    
-    private fun extractOutputTokens(metadata: Map<String, Any>?): Int? {
-        return metadata?.get("outputTokens") as? Int
-    }
     
     data class CustomerCounters(
         val tokens: Long,

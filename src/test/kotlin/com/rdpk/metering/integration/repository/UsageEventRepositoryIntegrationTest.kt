@@ -61,11 +61,12 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId,
                 timestamp = clock.instant(),
-                endpoint = "/api/completion",
-                tokens = 100,
-                model = "gpt-4",
-                latencyMs = 250,
-                metadata = mapOf("tokens" to 100, "model" to "gpt-4", "latencyMs" to 250)
+                data = mapOf(
+                    "endpoint" to "/api/completion",
+                    "tokens" to 100,
+                    "model" to "gpt-4",
+                    "latencyMs" to 250
+                )
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
 
@@ -77,10 +78,10 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                     found.eventId shouldBe eventId
                     found.tenantId shouldBe testTenantId
                     found.customerId shouldBe testCustomerId
-                    found.endpoint shouldBe "/api/completion"
-                    found.tokens shouldBe 100
-                    found.model shouldBe "gpt-4"
-                    found.latencyMs shouldBe 250
+                    found.data["endpoint"] shouldBe "/api/completion"
+                    found.data["tokens"] shouldBe 100
+                    found.data["model"] shouldBe "gpt-4"
+                    found.data["latencyMs"] shouldBe 250
                     found.id shouldNotBe null
                 }
                 .verifyComplete()
@@ -124,7 +125,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId1,
                 timestamp = clock.instant(),
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
             val event2 = UsageEvent(
@@ -132,7 +133,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId1,
                 timestamp = clock.instant(),
-                endpoint = "/api/embedding"
+                data = mapOf("endpoint" to "/api/embedding")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
             val event3 = UsageEvent(
@@ -140,7 +141,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId2, // Different customer
                 timestamp = clock.instant(),
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
 
@@ -181,7 +182,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId,
                 timestamp = now.minusSeconds(60),
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
             val event2 = UsageEvent(
@@ -189,7 +190,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId,
                 timestamp = now.minusSeconds(30),
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
             val event3 = UsageEvent(
@@ -197,7 +198,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 customerId = testCustomerId,
                 timestamp = now.plusSeconds(30), // Outside range
-                endpoint = "/api/completion"
+                data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
 

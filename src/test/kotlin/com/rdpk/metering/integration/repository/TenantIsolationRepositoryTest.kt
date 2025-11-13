@@ -25,9 +25,6 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
     lateinit var repository: UsageEventRepository
 
     @Autowired
-    lateinit var repositoryExtensions: UsageEventRepositoryExtensions
-
-    @Autowired
     lateinit var tenantRepository: com.rdpk.metering.repository.TenantRepository
 
     @Autowired
@@ -84,9 +81,11 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                     tenantId = tenantAId,
                     customerId = customerA1Id,
                     timestamp = clock.instant(),
-                    endpoint = "/api/completion",
-                    tokens = 100,
-                    metadata = mapOf("tenant" to "A")
+                    data = mapOf(
+                        "endpoint" to "/api/completion",
+                        "tokens" to 100,
+                        "tenant" to "A"
+                    )
                 )
 
                 val eventB1 = UsageEvent(
@@ -94,14 +93,16 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                     tenantId = tenantBId,
                     customerId = customerB1Id,
                     timestamp = clock.instant(),
-                    endpoint = "/api/completion",
-                    tokens = 200,
-                    metadata = mapOf("tenant" to "B")
+                    data = mapOf(
+                        "endpoint" to "/api/completion",
+                        "tokens" to 200,
+                        "tenant" to "B"
+                    )
                 )
 
                 StepVerifier.create(
-                    repositoryExtensions.saveWithJsonb(eventA1)
-                        .then(repositoryExtensions.saveWithJsonb(eventB1))
+                    repository.save(eventA1)
+                        .then(repository.save(eventB1))
                 ).verifyComplete()
 
                 // Query Tenant A's events
@@ -113,7 +114,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                         events shouldHaveSize 1
                         events[0].tenantId shouldBe tenantAId
                         events[0].eventId shouldBe eventA1.eventId
-                        events[0].metadata?.get("tenant") shouldBe "A"
+                        events[0].data["tenant"] shouldBe "A"
                         // Verify Tenant B's events are not included
                         events.none { it.tenantId == tenantBId } shouldBe true
                     }
@@ -128,7 +129,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                         events shouldHaveSize 1
                         events[0].tenantId shouldBe tenantBId
                         events[0].eventId shouldBe eventB1.eventId
-                        events[0].metadata?.get("tenant") shouldBe "B"
+                        events[0].data["tenant"] shouldBe "B"
                         // Verify Tenant A's events are not included
                         events.none { it.tenantId == tenantAId } shouldBe true
                     }
@@ -151,8 +152,8 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                 val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b", startTime.plusSeconds(20))
 
                 StepVerifier.create(
-                    repositoryExtensions.saveWithJsonb(eventA)
-                        .then(repositoryExtensions.saveWithJsonb(eventB))
+                    repository.save(eventA)
+                        .then(repository.save(eventB))
                 ).verifyComplete()
 
                 // Query Tenant A's events by time range
@@ -183,8 +184,8 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                 val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b")
 
                 StepVerifier.create(
-                    repositoryExtensions.saveWithJsonb(eventA)
-                        .then(repositoryExtensions.saveWithJsonb(eventB))
+                    repository.save(eventA)
+                        .then(repository.save(eventB))
                 ).verifyComplete()
 
                 // Try to query Tenant A's ID with Tenant B's customer ID
@@ -211,13 +212,15 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                     tenantId = tenant.id!!, // tenantId from request body
                     customerId = customer.id!!,
                     timestamp = clock.instant(),
-                    endpoint = "/api/completion",
-                    tokens = 100,
-                    metadata = mapOf("test" to "data")
+                    data = mapOf(
+                        "endpoint" to "/api/completion",
+                        "tokens" to 100,
+                        "test" to "data"
+                    )
                 )
 
                 StepVerifier.create(
-                    repositoryExtensions.saveWithJsonb(event)
+                    repository.save(event)
                         .then(repository.findByEventId(event.eventId))
                 )
                     .assertNext { savedEvent ->
@@ -241,8 +244,8 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                 val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b")
 
                 StepVerifier.create(
-                    repositoryExtensions.saveWithJsonb(eventA)
-                        .then(repositoryExtensions.saveWithJsonb(eventB))
+                    repository.save(eventA)
+                        .then(repository.save(eventB))
                 ).verifyComplete()
 
                 // Query using findByCustomerId (no tenant filter)
@@ -298,9 +301,11 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
             tenantId = tenantId,
             customerId = customerId,
             timestamp = timestamp,
-            endpoint = "/api/completion",
-            tokens = 100,
-            metadata = mapOf("test" to "data")
+            data = mapOf(
+                "endpoint" to "/api/completion",
+                "tokens" to 100,
+                "test" to "data"
+            )
         )
     }
 }

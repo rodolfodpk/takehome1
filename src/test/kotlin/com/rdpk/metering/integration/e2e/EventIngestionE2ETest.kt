@@ -95,7 +95,7 @@ class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = "999999",
                     customerId = "customer-1",
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata()
+                    metadata = EventMetadata(inputTokens = 0, outputTokens = 0)
                 )
 
                 webTestClient.post()
@@ -124,7 +124,7 @@ class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
                     tenantId = testTenantId,
                     customerId = "non-existent-customer",
                     apiEndpoint = "/api/completion",
-                    metadata = EventMetadata()
+                    metadata = EventMetadata(inputTokens = 0, outputTokens = 0)
                 )
 
                 webTestClient.post()

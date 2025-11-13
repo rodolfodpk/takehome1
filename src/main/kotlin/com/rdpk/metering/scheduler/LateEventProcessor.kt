@@ -8,7 +8,6 @@ import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.repository.AggregationWindowRepository
 import com.rdpk.metering.repository.LateEventRepository
 import com.rdpk.metering.repository.UsageEventRepository
-import com.rdpk.metering.repository.UsageEventRepositoryExtensions
 import com.rdpk.metering.service.AggregationService
 import com.rdpk.metering.service.LateEventService
 import com.rdpk.metering.service.RedisStateService
@@ -29,7 +28,6 @@ import java.time.LocalDateTime
 class LateEventProcessor(
     private val lateEventRepository: LateEventRepository,
     private val usageEventRepository: UsageEventRepository,
-    private val usageEventRepositoryExtensions: UsageEventRepositoryExtensions,
     private val aggregationWindowRepository: AggregationWindowRepository,
     private val lateEventService: LateEventService,
     private val aggregationService: AggregationService,
@@ -83,9 +81,9 @@ class LateEventProcessor(
         val event = lateEventService.deserializeEvent(lateEvent)
             ?: return Mono.empty()
         
-        // First, persist the event to usage_events table with resilience using JSONB casting
+        // First, persist the event to usage_events table with resilience
         return resilienceService.applyPostgresResilience(
-            usageEventRepositoryExtensions.saveWithJsonb(event)
+            usageEventRepository.save(event)
         )
             .flatMap { savedEvent ->
                 // Determine which window this event belongs to
@@ -144,9 +142,6 @@ class LateEventProcessor(
                                 
                                 // Update existing window
                                 existingWindow.copy(
-                                    totalCalls = aggregationResult.totalCalls,
-                                    totalTokens = aggregationResult.totalTokens,
-                                    avgLatencyMs = aggregationResult.avgLatencyMs,
                                     aggregationData = aggregationData,
                                     updated = LocalDateTime.now(clock)
                                 )
@@ -193,9 +188,6 @@ class LateEventProcessor(
                             customerId = lateEvent.customerId,
                             windowStart = windowStart,
                             windowEnd = windowEnd,
-                            totalCalls = aggregationResult.totalCalls,
-                            totalTokens = aggregationResult.totalTokens,
-                            avgLatencyMs = aggregationResult.avgLatencyMs,
                             aggregationData = aggregationData,
                             created = now,
                             updated = now

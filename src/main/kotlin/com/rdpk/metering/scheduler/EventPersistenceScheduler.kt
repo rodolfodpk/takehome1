@@ -3,7 +3,6 @@ package com.rdpk.metering.scheduler
 import com.rdpk.metering.config.EventMetrics
 import com.rdpk.metering.config.ResilienceService
 import com.rdpk.metering.repository.UsageEventRepository
-import com.rdpk.metering.repository.UsageEventRepositoryExtensions
 import com.rdpk.metering.service.RedisEventStorageService
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
@@ -22,7 +21,6 @@ import java.time.Duration
 class EventPersistenceScheduler(
     private val redisEventStorageService: RedisEventStorageService,
     private val usageEventRepository: UsageEventRepository,
-    private val usageEventRepositoryExtensions: UsageEventRepositoryExtensions,
     private val resilienceService: ResilienceService,
     private val eventMetrics: EventMetrics
 ) {
@@ -47,9 +45,9 @@ class EventPersistenceScheduler(
                     log.debug("Persisting batch of ${batch.size} events to Postgres")
                     val sample = Timer.start()
                     
-                    // Batch insert to Postgres with resilience using JSONB casting
+                    // Batch insert to Postgres with resilience
                     resilienceService.applyPostgresResilience(
-                        usageEventRepositoryExtensions.saveAllWithJsonb(batch)
+                        usageEventRepository.saveAll(batch)
                             .then()
                     )
                         .flatMap {

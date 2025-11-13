@@ -146,9 +146,6 @@ class AggregationScheduler(
                                                 customerId = customerId,
                                                 windowStart = windowStart,
                                                 windowEnd = windowEnd,
-                                                totalCalls = aggregationResult.totalCalls,
-                                                totalTokens = aggregationResult.totalTokens,
-                                                avgLatencyMs = aggregationResult.avgLatencyMs,
                                                 aggregationData = aggregationData,
                                                 created = now,
                                                 updated = now
@@ -163,7 +160,7 @@ class AggregationScheduler(
                                                 .doOnSuccess {
                                                     sample.stop(eventMetrics.aggregationProcessingLatency)
                                                     eventMetrics.aggregationWindowsProcessed.increment()
-                                                    log.debug("Successfully aggregated window: tenant=$tenantId, customer=$customerId, windowStart=$windowStart, calls=${aggregationWindow.totalCalls}")
+                                                    log.debug("Successfully aggregated window: tenant=$tenantId, customer=$customerId, windowStart=$windowStart")
                                                 }
                                                 .doOnError { error ->
                                                     sample.stop(eventMetrics.aggregationProcessingLatency)

@@ -41,7 +41,9 @@ class AggregationService(
                 
                 // Calculate average latency
                 val avgLatency = if (events.isNotEmpty()) {
-                    events.mapNotNull { it.latencyMs?.toDouble() }.average()
+                    events.mapNotNull { event ->
+                        (event.data["latencyMs"] as? Number)?.toDouble()
+                    }.average().takeIf { !it.isNaN() }
                 } else {
                     null
                 }
@@ -60,21 +62,25 @@ class AggregationService(
     
     private fun aggregateByEndpoint(events: List<UsageEvent>): Map<String, EndpointStats> {
         return events
-            .groupBy { it.endpoint }
+            .groupBy { event -> event.data["endpoint"] as? String ?: "unknown" }
             .mapValues { (_, eventList) ->
                 val totalCalls = eventList.size.toLong()
-                val totalTokens = eventList.sumOf { it.tokens?.toLong() ?: 0L }
+                val totalTokens = eventList.sumOf { event ->
+                    (event.data["tokens"] as? Number)?.toLong() ?: 0L
+                }
                 EndpointStats(calls = totalCalls, tokens = totalTokens)
             }
     }
     
     private fun aggregateByModel(events: List<UsageEvent>): Map<String, ModelStats> {
         return events
-            .filter { it.model != null }
-            .groupBy { it.model!! }
+            .filter { event -> event.data["model"] != null }
+            .groupBy { event -> event.data["model"] as String }
             .mapValues { (_, eventList) ->
                 val totalCalls = eventList.size.toLong()
-                val totalTokens = eventList.sumOf { it.tokens?.toLong() ?: 0L }
+                val totalTokens = eventList.sumOf { event ->
+                    (event.data["tokens"] as? Number)?.toLong() ?: 0L
+                }
                 ModelStats(calls = totalCalls, tokens = totalTokens)
             }
     }

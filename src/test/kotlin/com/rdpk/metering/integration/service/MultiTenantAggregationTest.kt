@@ -2,12 +2,12 @@ package com.rdpk.metering.integration.service
 
 import com.rdpk.metering.domain.AggregationWindow
 import com.rdpk.metering.domain.UsageEvent
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.rdpk.metering.integration.AbstractKotestIntegrationTest
 import com.rdpk.metering.repository.AggregationWindowRepository
 import com.rdpk.metering.repository.CustomerRepository
 import com.rdpk.metering.repository.TenantRepository
 import com.rdpk.metering.repository.UsageEventRepository
-import com.rdpk.metering.repository.UsageEventRepositoryExtensions
 import com.rdpk.metering.service.AggregationService
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -35,13 +35,13 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
     lateinit var usageEventRepository: UsageEventRepository
 
     @Autowired
-    lateinit var usageEventRepositoryExtensions: UsageEventRepositoryExtensions
-
-    @Autowired
     lateinit var aggregationWindowRepository: AggregationWindowRepository
 
     @Autowired
     lateinit var aggregationService: AggregationService
+    
+    @Autowired
+    lateinit var objectMapper: ObjectMapper
 
     init {
         describe("Multi-Tenant Aggregation Isolation") {
@@ -65,7 +65,7 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
 
                 // Store events
                 StepVerifier.create(
-                    usageEventRepositoryExtensions.saveAllWithJsonb(listOf(eventA1, eventA2, eventB1, eventB2))
+                    usageEventRepository.saveAll(listOf(eventA1, eventA2, eventB1, eventB2))
                         .then()
                 ).verifyComplete()
 
@@ -115,7 +115,7 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
 
                 // Store events
                 StepVerifier.create(
-                    usageEventRepositoryExtensions.saveAllWithJsonb(listOf(eventA, eventB))
+                    usageEventRepository.saveAll(listOf(eventA, eventB))
                         .then()
                 ).verifyComplete()
 
@@ -136,9 +136,6 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                     customerId = customerA1.id!!,
                     windowStart = windowStart,
                     windowEnd = windowEnd,
-                    totalCalls = aggregationA.totalCalls,
-                    totalTokens = aggregationA.totalTokens,
-                    avgLatencyMs = aggregationA.avgLatencyMs,
                     aggregationData = aggregationDataA,
                     created = now,
                     updated = now
@@ -149,9 +146,6 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                     customerId = customerB1.id!!,
                     windowStart = windowStart,
                     windowEnd = windowEnd,
-                    totalCalls = aggregationB.totalCalls,
-                    totalTokens = aggregationB.totalTokens,
-                    avgLatencyMs = aggregationB.avgLatencyMs,
                     aggregationData = aggregationDataB,
                     created = now,
                     updated = now
@@ -172,8 +166,9 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                     .assertNext { window ->
                         window.tenantId shouldBe tenantA.id
                         window.customerId shouldBe customerA1.id
-                        window.totalCalls shouldBe 1L
-                        window.totalTokens shouldBe 100L
+                        val data = objectMapper.readValue(window.aggregationData, Map::class.java) as Map<*, *>
+                        data["totalCalls"] shouldBe 1L
+                        data["totalTokens"] shouldBe 100L
                     }
                     .verifyComplete()
 
@@ -185,8 +180,9 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                     .assertNext { window ->
                         window.tenantId shouldBe tenantB.id
                         window.customerId shouldBe customerB1.id
-                        window.totalCalls shouldBe 1L
-                        window.totalTokens shouldBe 100L
+                        val data = objectMapper.readValue(window.aggregationData, Map::class.java) as Map<*, *>
+                        data["totalCalls"] shouldBe 1L
+                        data["totalTokens"] shouldBe 100L
                     }
                     .verifyComplete()
 
@@ -231,7 +227,7 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
 
                 // Store events
                 StepVerifier.create(
-                    usageEventRepositoryExtensions.saveAllWithJsonb(listOf(eventA1, eventA2, eventB1))
+                    usageEventRepository.saveAll(listOf(eventA1, eventA2, eventB1))
                         .then()
                 ).verifyComplete()
 
@@ -299,9 +295,11 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
             tenantId = tenantId,
             customerId = customerId,
             timestamp = timestamp,
-            endpoint = "/api/completion",
-            tokens = tokens,
-            metadata = mapOf("test" to "data")
+            data = mapOf(
+                "endpoint" to "/api/completion",
+                "tokens" to tokens,
+                "test" to "data"
+            )
         )
     }
 }

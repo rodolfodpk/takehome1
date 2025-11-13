@@ -25,20 +25,8 @@ data class UsageEvent(
     @Column("timestamp")
     val timestamp: Instant,
     
-    @Column("endpoint")
-    val endpoint: String,
-    
-    @Column("tokens")
-    val tokens: Int? = null,
-    
-    @Column("model")
-    val model: String? = null,
-    
-    @Column("latency_ms")
-    val latencyMs: Int? = null,
-    
-    @Column("metadata")
-    val metadata: Map<String, Any>? = null, // JSONB - handled via custom repository methods and @Query with ::text casting
+    @Column("data")
+    val data: Map<String, Any>, // JSONB - contains: endpoint, tokens, model, latencyMs, inputTokens, outputTokens, and any additional metadata
     
     @ReadOnlyProperty
     @Column("created")
