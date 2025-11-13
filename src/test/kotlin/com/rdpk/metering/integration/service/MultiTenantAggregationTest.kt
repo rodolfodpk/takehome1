@@ -42,6 +42,9 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
     
     @Autowired
     lateinit var objectMapper: ObjectMapper
+    
+    @Autowired
+    lateinit var redisStateService: com.rdpk.metering.service.RedisStateService
 
     init {
         describe("Multi-Tenant Aggregation Isolation") {
@@ -67,6 +70,18 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                 StepVerifier.create(
                     usageEventRepository.saveAll(listOf(eventA1, eventA2, eventB1, eventB2))
                         .then()
+                ).verifyComplete()
+
+                // Update Redis counters for Tenant A (aggregation reads from Redis)
+                StepVerifier.create(
+                    redisStateService.updateCounters(eventA1)
+                        .then(redisStateService.updateCounters(eventA2))
+                ).verifyComplete()
+
+                // Update Redis counters for Tenant B
+                StepVerifier.create(
+                    redisStateService.updateCounters(eventB1)
+                        .then(redisStateService.updateCounters(eventB2))
                 ).verifyComplete()
 
                 // Aggregate Tenant A's events
@@ -119,6 +134,12 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                         .then()
                 ).verifyComplete()
 
+                // Update Redis counters for both tenants (aggregation reads from Redis)
+                StepVerifier.create(
+                    redisStateService.updateCounters(eventA)
+                        .then(redisStateService.updateCounters(eventB))
+                ).verifyComplete()
+
                 // Create aggregation windows for both tenants
                 val aggregationA = aggregationService.aggregateWindow(
                     tenantA.id!!, customerA1.id!!, windowStart, windowEnd, listOf(eventA)
@@ -151,10 +172,29 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                     updated = now
                 )
 
-                // Save both aggregation windows
+                // Save both aggregation windows using explicit JSONB casting
                 StepVerifier.create(
-                    aggregationWindowRepository.save(windowA)
-                        .then(aggregationWindowRepository.save(windowB))
+                    aggregationWindowRepository.saveWithJsonb(
+                        windowA.tenantId,
+                        windowA.customerId,
+                        windowA.windowStart,
+                        windowA.windowEnd,
+                        windowA.aggregationData,
+                        windowA.created ?: now,
+                        windowA.updated ?: now
+                    )
+                        .then(
+                            aggregationWindowRepository.saveWithJsonb(
+                                windowB.tenantId,
+                                windowB.customerId,
+                                windowB.windowStart,
+                                windowB.windowEnd,
+                                windowB.aggregationData,
+                                windowB.created ?: now,
+                                windowB.updated ?: now
+                            )
+                        )
+                        .then() // Convert to Mono<Void> for verifyComplete
                 ).verifyComplete()
 
                 // Verify aggregation windows are created separately
@@ -167,8 +207,11 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                         window.tenantId shouldBe tenantA.id
                         window.customerId shouldBe customerA1.id
                         val data = objectMapper.readValue(window.aggregationData, Map::class.java) as Map<*, *>
-                        data["totalCalls"] shouldBe 1L
-                        data["totalTokens"] shouldBe 100L
+                        // Handle Int to Long conversion (Jackson may deserialize small numbers as Int)
+                        val totalCalls = (data["totalCalls"] as? Number)?.toLong() ?: 0L
+                        val totalTokens = (data["totalTokens"] as? Number)?.toLong() ?: 0L
+                        totalCalls shouldBe 1L
+                        totalTokens shouldBe 100L
                     }
                     .verifyComplete()
 
@@ -181,30 +224,33 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                         window.tenantId shouldBe tenantB.id
                         window.customerId shouldBe customerB1.id
                         val data = objectMapper.readValue(window.aggregationData, Map::class.java) as Map<*, *>
-                        data["totalCalls"] shouldBe 1L
-                        data["totalTokens"] shouldBe 100L
+                        // Handle Int to Long conversion (Jackson may deserialize small numbers as Int)
+                        val totalCalls = (data["totalCalls"] as? Number)?.toLong() ?: 0L
+                        val totalTokens = (data["totalTokens"] as? Number)?.toLong() ?: 0L
+                        totalCalls shouldBe 1L
+                        totalTokens shouldBe 100L
                     }
                     .verifyComplete()
 
                 // Verify unique constraint works (same windowStart, different tenants)
-                // Both windows should exist independently
+                // Both windows should exist independently - verify using required method
                 StepVerifier.create(
-                    aggregationWindowRepository.findByTenantIdAndCustomerId(tenantA.id!!, customerA1.id!!)
-                        .collectList()
+                    aggregationWindowRepository.findByTenantIdAndCustomerIdAndWindowStart(
+                        tenantA.id!!, customerA1.id!!, windowStart
+                    )
                 )
-                    .assertNext { windows ->
-                        windows shouldHaveSize 1
-                        windows[0].tenantId shouldBe tenantA.id
+                    .assertNext { window ->
+                        window.tenantId shouldBe tenantA.id
                     }
                     .verifyComplete()
 
                 StepVerifier.create(
-                    aggregationWindowRepository.findByTenantIdAndCustomerId(tenantB.id!!, customerB1.id!!)
-                        .collectList()
+                    aggregationWindowRepository.findByTenantIdAndCustomerIdAndWindowStart(
+                        tenantB.id!!, customerB1.id!!, windowStart
+                    )
                 )
-                    .assertNext { windows ->
-                        windows shouldHaveSize 1
-                        windows[0].tenantId shouldBe tenantB.id
+                    .assertNext { window ->
+                        window.tenantId shouldBe tenantB.id
                     }
                     .verifyComplete()
             }
@@ -231,6 +277,12 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                         .then()
                 ).verifyComplete()
 
+                // Update Redis counters for Tenant A (aggregation reads from Redis)
+                StepVerifier.create(
+                    redisStateService.updateCounters(eventA1)
+                        .then(redisStateService.updateCounters(eventA2))
+                ).verifyComplete()
+
                 // Get Tenant A's events for aggregation
                 StepVerifier.create(
                     usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(
@@ -247,11 +299,23 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
                         events.map { it.eventId } shouldContain eventA2.eventId
                         events.map { it.eventId }.none { it == eventB1.eventId } shouldBe true
 
-                        // Aggregate Tenant A's events
-                        val aggregation = aggregationService.aggregateWindow(
-                            tenantA.id!!, customerA1.id!!, windowStart, windowEnd, events
-                        ).block()!!
-
+                        // Verify events are correct (aggregation is tested separately to avoid blocking)
+                    }
+                    .verifyComplete()
+                
+                // Verify aggregation separately using reactive chain (no blocking)
+                StepVerifier.create(
+                    usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(
+                        tenantA.id!!, customerA1.id!!, windowStart, windowEnd
+                    )
+                        .collectList()
+                        .flatMap { events ->
+                            aggregationService.aggregateWindow(
+                                tenantA.id!!, customerA1.id!!, windowStart, windowEnd, events
+                            )
+                        }
+                )
+                    .assertNext { aggregation ->
                         // Verify aggregation totals are correct (only Tenant A's events)
                         aggregation.totalCalls shouldBe 2L
                         aggregation.totalTokens shouldBe 200L // 50 + 150
@@ -290,6 +354,9 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
         timestamp: Instant,
         tokens: Int = 100
     ): UsageEvent {
+        // Split tokens into input/output for realistic data
+        val inputTokens = tokens / 2
+        val outputTokens = tokens - inputTokens
         return UsageEvent(
             eventId = "$eventIdPrefix-${System.currentTimeMillis()}",
             tenantId = tenantId,
@@ -298,6 +365,8 @@ class MultiTenantAggregationTest : AbstractKotestIntegrationTest() {
             data = mapOf(
                 "endpoint" to "/api/completion",
                 "tokens" to tokens,
+                "inputTokens" to inputTokens,
+                "outputTokens" to outputTokens,
                 "test" to "data"
             )
         )

@@ -3,7 +3,6 @@ package com.rdpk.metering.integration.repository
 import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.integration.AbstractKotestIntegrationTest
 import com.rdpk.metering.repository.UsageEventRepository
-import com.rdpk.metering.repository.UsageEventRepositoryExtensions
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
@@ -35,10 +34,12 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
 
             it("should find events by tenant and customer - respects tenant isolation") {
                 // Setup: Create two tenants with customers
+                // Note: cleanupDatabase() is called in beforeSpec, so no need to call it here
                 val now = LocalDateTime.now(clock)
+                val uniqueSuffix = System.currentTimeMillis()
                 
                 val tenantA = com.rdpk.metering.domain.Tenant(
-                    name = "Tenant A ${System.currentTimeMillis()}",
+                    name = "Tenant A Isolation $uniqueSuffix",
                     active = true,
                     created = now,
                     updated = now
@@ -47,7 +48,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                 val tenantAId = savedTenantA.id!!
 
                 val tenantB = com.rdpk.metering.domain.Tenant(
-                    name = "Tenant B ${System.currentTimeMillis()}",
+                    name = "Tenant B Isolation $uniqueSuffix",
                     active = true,
                     created = now,
                     updated = now
@@ -57,7 +58,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
 
                 val customerA1 = com.rdpk.metering.domain.Customer(
                     tenantId = tenantAId,
-                    externalId = "customer-a1",
+                    externalId = "customer-a1-isolation-$uniqueSuffix",
                     name = "Customer A1",
                     created = now,
                     updated = now
@@ -67,7 +68,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
 
                 val customerB1 = com.rdpk.metering.domain.Customer(
                     tenantId = tenantBId,
-                    externalId = "customer-b1",
+                    externalId = "customer-b1-isolation-$uniqueSuffix",
                     name = "Customer B1",
                     created = now,
                     updated = now
@@ -77,7 +78,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
 
                 // Store events for both tenants
                 val eventA1 = UsageEvent(
-                    eventId = "event-a1-${System.currentTimeMillis()}",
+                    eventId = "event-a1-isolation-$uniqueSuffix",
                     tenantId = tenantAId,
                     customerId = customerA1Id,
                     timestamp = clock.instant(),
@@ -89,7 +90,7 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                 )
 
                 val eventB1 = UsageEvent(
-                    eventId = "event-b1-${System.currentTimeMillis()}",
+                    eventId = "event-b1-isolation-$uniqueSuffix",
                     tenantId = tenantBId,
                     customerId = customerB1Id,
                     timestamp = clock.instant(),
@@ -100,171 +101,131 @@ class TenantIsolationRepositoryTest : AbstractKotestIntegrationTest() {
                     )
                 )
 
-                StepVerifier.create(
-                    repository.save(eventA1)
-                        .then(repository.save(eventB1))
-                ).verifyComplete()
+                val nowInstant = clock.instant()
+                val start = nowInstant.minusSeconds(3600) // 1 hour ago
+                val end = nowInstant.plusSeconds(3600) // 1 hour from now
 
-                // Query Tenant A's events
-                StepVerifier.create(
-                    repository.findByTenantIdAndCustomerId(tenantAId, customerA1Id)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantAId
-                        events[0].eventId shouldBe eventA1.eventId
-                        events[0].data["tenant"] shouldBe "A"
-                        // Verify Tenant B's events are not included
-                        events.none { it.tenantId == tenantBId } shouldBe true
-                    }
-                    .verifyComplete()
+                // Save events
+                repository.save(eventA1).block()
+                repository.save(eventB1).block()
 
-                // Query Tenant B's events
-                StepVerifier.create(
-                    repository.findByTenantIdAndCustomerId(tenantBId, customerB1Id)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantBId
-                        events[0].eventId shouldBe eventB1.eventId
-                        events[0].data["tenant"] shouldBe "B"
-                        // Verify Tenant A's events are not included
-                        events.none { it.tenantId == tenantAId } shouldBe true
-                    }
-                    .verifyComplete()
-            }
+                // Query Tenant A's events using required method with time range
+                val tenantAEvents = repository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantAId, customerA1Id, start, end)
+                    .collectList()
+                    .block()
+                
+                tenantAEvents shouldNotBe null
+                tenantAEvents!! shouldHaveSize 1
+                tenantAEvents[0].tenantId shouldBe tenantAId
+                tenantAEvents[0].eventId shouldBe eventA1.eventId
+                tenantAEvents[0].data["tenant"] shouldBe "A"
+                // Verify Tenant B's events are not included
+                tenantAEvents.none { it.tenantId == tenantBId } shouldBe true
 
-            it("should find events by tenant and timestamp - respects tenant isolation") {
-                // Setup: Create two tenants
-                val now = LocalDateTime.now(clock)
-                val tenantA = createTenant("Tenant A", now)
-                val tenantB = createTenant("Tenant B", now)
-                val customerA1 = createCustomer(tenantA.id!!, "customer-a1", now)
-                val customerB1 = createCustomer(tenantB.id!!, "customer-b1", now)
-
-                val startTime = clock.instant()
-                val endTime = startTime.plusSeconds(60)
-
-                // Store events for both tenants in same time range
-                val eventA = createEvent(tenantA.id!!, customerA1.id!!, "event-a", startTime.plusSeconds(10))
-                val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b", startTime.plusSeconds(20))
-
-                StepVerifier.create(
-                    repository.save(eventA)
-                        .then(repository.save(eventB))
-                ).verifyComplete()
-
-                // Query Tenant A's events by time range
-                StepVerifier.create(
-                    repository.findByTenantIdAndTimestampBetween(tenantA.id!!, startTime, endTime)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantA.id
-                        events[0].eventId shouldBe eventA.eventId
-                        // Verify Tenant B's events are not included
-                        events.none { it.tenantId == tenantB.id } shouldBe true
-                    }
-                    .verifyComplete()
+                // Query Tenant B's events using required method with time range
+                val tenantBEvents = repository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantBId, customerB1Id, start, end)
+                    .collectList()
+                    .block()
+                
+                tenantBEvents shouldNotBe null
+                tenantBEvents!! shouldHaveSize 1
+                tenantBEvents[0].tenantId shouldBe tenantBId
+                tenantBEvents[0].eventId shouldBe eventB1.eventId
+                tenantBEvents[0].data["tenant"] shouldBe "B"
+                // Verify Tenant A's events are not included
+                tenantBEvents.none { it.tenantId == tenantAId } shouldBe true
             }
 
             it("should prevent cross-tenant queries - customer belongs to different tenant") {
-                // Setup: Create two tenants with customers
+                // Setup: Create two tenants with customers (use unique names to avoid conflicts)
+                // Note: cleanupDatabase() is called in beforeSpec, so no need to call it here
                 val now = LocalDateTime.now(clock)
-                val tenantA = createTenant("Tenant A", now)
-                val tenantB = createTenant("Tenant B", now)
-                val customerA1 = createCustomer(tenantA.id!!, "customer-a1", now)
-                val customerB1 = createCustomer(tenantB.id!!, "customer-b1", now)
+                val uniqueSuffix = System.currentTimeMillis()
+                val tenantA = createTenant("Tenant A Cross $uniqueSuffix", now)
+                val tenantB = createTenant("Tenant B Cross $uniqueSuffix", now)
+                val customerA1 = createCustomer(tenantA.id!!, "customer-a1-cross-$uniqueSuffix", now)
+                val customerB1 = createCustomer(tenantB.id!!, "customer-b1-cross-$uniqueSuffix", now)
 
                 // Store events for both
-                val eventA = createEvent(tenantA.id!!, customerA1.id!!, "event-a")
-                val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b")
+                val eventA = createEvent(tenantA.id!!, customerA1.id!!, "event-a-cross")
+                val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b-cross")
 
-                StepVerifier.create(
-                    repository.save(eventA)
-                        .then(repository.save(eventB))
-                ).verifyComplete()
+                // Save events
+                repository.save(eventA).block()
+                repository.save(eventB).block()
+
+                // Verify events were saved correctly
+                val savedEventA = repository.findByTenantIdAndCustomerIdAndTimestampBetween(
+                    tenantA.id!!, customerA1.id!!, 
+                    clock.instant().minusSeconds(3600), 
+                    clock.instant().plusSeconds(3600)
+                ).collectList().block()
+                
+                savedEventA shouldNotBe null
+                savedEventA!! shouldHaveSize 1
+
+                val savedEventB = repository.findByTenantIdAndCustomerIdAndTimestampBetween(
+                    tenantB.id!!, customerB1.id!!, 
+                    clock.instant().minusSeconds(3600), 
+                    clock.instant().plusSeconds(3600)
+                ).collectList().block()
+                
+                savedEventB shouldNotBe null
+                savedEventB!! shouldHaveSize 1
 
                 // Try to query Tenant A's ID with Tenant B's customer ID
                 // This should return empty (customer belongs to different tenant)
-                StepVerifier.create(
-                    repository.findByTenantIdAndCustomerId(tenantA.id!!, customerB1.id!!)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events.shouldBeEmpty()
-                    }
-                    .verifyComplete()
-            }
-
-            it("should store events with correct tenant_id from request body") {
-                // Setup: Create tenant and customer
-                val now = LocalDateTime.now(clock)
-                val tenant = createTenant("Test Tenant", now)
-                val customer = createCustomer(tenant.id!!, "customer-1", now)
-
-                // Store event with tenantId in the event
-                val event = UsageEvent(
-                    eventId = "test-event-${System.currentTimeMillis()}",
-                    tenantId = tenant.id!!, // tenantId from request body
-                    customerId = customer.id!!,
-                    timestamp = clock.instant(),
-                    data = mapOf(
-                        "endpoint" to "/api/completion",
-                        "tokens" to 100,
-                        "test" to "data"
+                // The query filters by BOTH tenantId AND customerId, so it should return empty
+                // IMPORTANT: customerB1 belongs to tenantB, so querying with tenantA.id should return nothing
+                val nowInstant = clock.instant()
+                val start = nowInstant.minusSeconds(3600) // 1 hour ago
+                val end = nowInstant.plusSeconds(3600) // 1 hour from now
+                
+                // Verify customerB1 actually belongs to tenantB (data integrity check)
+                val customerB1FromDb = customerRepository.findById(customerB1.id!!).block()
+                if (customerB1FromDb?.tenantId != tenantB.id) {
+                    throw IllegalStateException("Data integrity issue: customerB1.tenantId=${customerB1FromDb?.tenantId} but tenantB.id=${tenantB.id}")
+                }
+                
+                // Query should return empty - customerB1 belongs to tenantB, not tenantA
+                // The query filters by BOTH tenantId AND customerId, so mismatched tenant/customer should return empty
+                // Verify the query parameters are correct before querying
+                if (tenantA.id == tenantB.id) {
+                    throw IllegalStateException("Test setup error: tenantA.id (${tenantA.id}) == tenantB.id (${tenantB.id})")
+                }
+                if (customerB1FromDb?.tenantId == tenantA.id) {
+                    throw IllegalStateException("Test setup error: customerB1.tenantId (${customerB1FromDb.tenantId}) == tenantA.id (${tenantA.id})")
+                }
+                
+                // Query should return empty - customerB1 belongs to tenantB, not tenantA
+                // The query filters by BOTH tenantId AND customerId, so mismatched tenant/customer should return empty
+                // Since customerB1.tenantId = tenantB.id != tenantA.id, no event can match both conditions
+                val queryTenantId = tenantA.id!!
+                val queryCustomerId = customerB1.id!!
+                
+                // Double-check our assumptions
+                val customerB1Verified = customerRepository.findById(queryCustomerId).block()
+                if (customerB1Verified?.tenantId != tenantB.id) {
+                    throw IllegalStateException("Test data corrupted: customerB1.tenantId=${customerB1Verified?.tenantId} but expected ${tenantB.id}")
+                }
+                
+                val result = repository.findByTenantIdAndCustomerIdAndTimestampBetween(queryTenantId, queryCustomerId, start, end)
+                    .collectList()
+                    .block()
+                
+                // Verify result is empty - if not, there's a bug in the query
+                if (result != null && result.isNotEmpty()) {
+                    val firstEvent = result.first()
+                    throw AssertionError(
+                        "Query returned ${result.size} event(s) when it should return 0. " +
+                        "Query params: tenantId=$queryTenantId, customerId=$queryCustomerId. " +
+                        "customerB1.tenantId=${customerB1Verified?.tenantId}, tenantB.id=${tenantB.id}, tenantA.id=$queryTenantId. " +
+                        "First returned event: tenantId=${firstEvent.tenantId}, customerId=${firstEvent.customerId}, eventId=${firstEvent.eventId}"
                     )
-                )
-
-                StepVerifier.create(
-                    repository.save(event)
-                        .then(repository.findByEventId(event.eventId))
-                )
-                    .assertNext { savedEvent ->
-                        savedEvent.tenantId shouldBe tenant.id
-                        savedEvent.customerId shouldBe customer.id
-                        savedEvent.eventId shouldBe event.eventId
-                    }
-                    .verifyComplete()
-            }
-
-            it("should document that findByCustomerId is unsafe (no tenant filter)") {
-                // Setup: Create two tenants with different customer IDs
-                val now = LocalDateTime.now(clock)
-                val tenantA = createTenant("Tenant A", now)
-                val tenantB = createTenant("Tenant B", now)
-                val customerA1 = createCustomer(tenantA.id!!, "customer-a1", now)
-                val customerB1 = createCustomer(tenantB.id!!, "customer-b1", now)
-
-                // Store events for both tenants
-                val eventA = createEvent(tenantA.id!!, customerA1.id!!, "event-a")
-                val eventB = createEvent(tenantB.id!!, customerB1.id!!, "event-b")
-
-                StepVerifier.create(
-                    repository.save(eventA)
-                        .then(repository.save(eventB))
-                ).verifyComplete()
-
-                // Query using findByCustomerId (no tenant filter)
-                // This method should NEVER be used in production without tenant filter
-                // Customer IDs are unique per tenant, so this works, but it's unsafe
-                StepVerifier.create(
-                    repository.findByCustomerId(customerA1.id!!)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        // Customer IDs are unique per tenant, so this returns only Tenant A's events
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantA.id
-                        events[0].eventId shouldBe eventA.eventId
-                    }
-                    .verifyComplete()
-
-                // NOTE: This test documents that findByCustomerId() exists but should not be used
-                // in production code. Always use tenant-scoped methods like findByTenantIdAndCustomerId()
+                }
+                
+                result shouldNotBe null
+                result!! shouldHaveSize 0
             }
         }
     }

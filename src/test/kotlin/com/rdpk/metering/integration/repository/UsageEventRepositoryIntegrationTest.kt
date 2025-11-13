@@ -33,68 +33,14 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
     init {
         describe("UsageEventRepository") {
         
-        it("should save and find usage event by eventId") {
-            // Setup: Create test tenant and customer
-            val now = LocalDateTime.now(clock)
-            val tenant = com.rdpk.metering.domain.Tenant(
-                name = "Test Tenant ${System.currentTimeMillis()}",
-                active = true,
-                created = now,
-                updated = now
-            )
-            val savedTenant = tenantRepository.save(tenant).block()!!
-            val testTenantId = savedTenant.id ?: throw IllegalStateException("Tenant ID is null")
-
-            val customer = com.rdpk.metering.domain.Customer(
-                tenantId = testTenantId,
-                externalId = "customer-1",
-                name = "Test Customer",
-                created = now,
-                updated = now
-            )
-            val savedCustomer = customerRepository.save(customer).block()!!
-            val testCustomerId = savedCustomer.id ?: throw IllegalStateException("Customer ID is null")
-            
-            val eventId = "test-event-${System.currentTimeMillis()}-${java.util.UUID.randomUUID().toString().take(8)}"
-            val event = UsageEvent(
-                eventId = eventId,
-                tenantId = testTenantId,
-                customerId = testCustomerId,
-                timestamp = clock.instant(),
-                data = mapOf(
-                    "endpoint" to "/api/completion",
-                    "tokens" to 100,
-                    "model" to "gpt-4",
-                    "latencyMs" to 250
-                )
-                // created and updated are @ReadOnlyProperty - managed by database defaults
-            )
-
-            StepVerifier.create(
-                repository.save(event)
-                    .then(repository.findByEventId(eventId))
-            )
-                .assertNext { found ->
-                    found.eventId shouldBe eventId
-                    found.tenantId shouldBe testTenantId
-                    found.customerId shouldBe testCustomerId
-                    found.data["endpoint"] shouldBe "/api/completion"
-                    found.data["tokens"] shouldBe 100
-                    found.data["model"] shouldBe "gpt-4"
-                    found.data["latencyMs"] shouldBe 250
-                    found.id shouldNotBe null
-                }
-                .verifyComplete()
-        }
-
-        it("should find events by tenant and customer") {
+        it("should find events by tenant and customer with time range") {
             // Setup: Create test tenant and customers
-            val now = LocalDateTime.now(clock)
+            val nowLocal = LocalDateTime.now(clock)
             val tenant = com.rdpk.metering.domain.Tenant(
                 name = "Test Tenant 2 ${System.currentTimeMillis()}",
                 active = true,
-                created = now,
-                updated = now
+                created = nowLocal,
+                updated = nowLocal
             )
             val savedTenant = tenantRepository.save(tenant).block()!!
             val testTenantId = savedTenant.id ?: throw IllegalStateException("Tenant ID is null")
@@ -103,8 +49,8 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 externalId = "customer-1",
                 name = "Test Customer 1",
-                created = now,
-                updated = now
+                created = nowLocal,
+                updated = nowLocal
             )
             val savedCustomer1 = customerRepository.save(customer1).block()!!
             val testCustomerId1 = savedCustomer1.id ?: throw IllegalStateException("Customer ID is null")
@@ -113,18 +59,22 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 tenantId = testTenantId,
                 externalId = "customer-2",
                 name = "Test Customer 2",
-                created = now,
-                updated = now
+                created = nowLocal,
+                updated = nowLocal
             )
             val savedCustomer2 = customerRepository.save(customer2).block()!!
             val testCustomerId2 = savedCustomer2.id ?: throw IllegalStateException("Customer ID is null")
+            
+            val now = clock.instant()
+            val start = now.minusSeconds(3600) // 1 hour ago
+            val end = now.plusSeconds(3600) // 1 hour from now
             
             val uniqueId = System.currentTimeMillis()
             val event1 = UsageEvent(
                 eventId = "event-1-$uniqueId",
                 tenantId = testTenantId,
                 customerId = testCustomerId1,
-                timestamp = clock.instant(),
+                timestamp = now,
                 data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
@@ -132,7 +82,7 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 eventId = "event-2-$uniqueId",
                 tenantId = testTenantId,
                 customerId = testCustomerId1,
-                timestamp = clock.instant(),
+                timestamp = now,
                 data = mapOf("endpoint" to "/api/embedding")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
@@ -140,14 +90,16 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                 eventId = "event-3-$uniqueId",
                 tenantId = testTenantId,
                 customerId = testCustomerId2, // Different customer
-                timestamp = clock.instant(),
+                timestamp = now,
                 data = mapOf("endpoint" to "/api/completion")
                 // created and updated are @ReadOnlyProperty - managed by database defaults
             )
 
             StepVerifier.create(
                 repository.saveAll(listOf(event1, event2, event3))
-                    .thenMany(repository.findByTenantIdAndCustomerId(testTenantId, testCustomerId1))
+                    .thenMany(
+                        repository.findByTenantIdAndCustomerIdAndTimestampBetween(testTenantId, testCustomerId1, start, end)
+                    )
             )
                 .expectNextCount(2)
                 .verifyComplete()

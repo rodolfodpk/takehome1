@@ -12,6 +12,7 @@ import com.rdpk.metering.service.DistributedLockService
 import com.rdpk.metering.service.RedisStateService
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Flux
@@ -23,8 +24,9 @@ import java.time.LocalDateTime
 
 /**
  * Scheduler for batch aggregation of 30-second windows
- * Runs every 30 seconds to process completed windows
+ * Runs at configurable interval (default: 30 seconds) to process completed windows
  * Uses distributed locks to prevent duplicate processing
+ * Configure interval via: metering.aggregation.processing-interval-ms
  */
 @Component
 class AggregationScheduler(
@@ -37,23 +39,27 @@ class AggregationScheduler(
     private val distributedLockService: DistributedLockService,
     private val resilienceService: ResilienceService,
     private val eventMetrics: EventMetrics,
-    private val clock: Clock
+    private val clock: Clock,
+    @Value("\${metering.window.duration-seconds:30}")
+    private val windowDurationSeconds: Long,
+    @Value("\${metering.lock.timeout-seconds:5}")
+    private val lockTimeoutSeconds: Long,
+    @Value("\${metering.lock.lease-time-seconds:60}")
+    private val lockLeaseTimeSeconds: Long
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
     
-    companion object {
-        private val WINDOW_DURATION_SECONDS = 30L
-    }
-    
     /**
-     * Process aggregation windows every 30 seconds
+     * Process aggregation windows at configurable interval
+     * Default: 30 seconds (30000ms)
+     * Configure via: metering.aggregation.processing-interval-ms
      */
-    @Scheduled(fixedRate = 30000) // 30 seconds
+    @Scheduled(fixedRateString = "\${metering.aggregation.processing-interval-ms:30000}")
     fun processAggregationWindows() {
         val now = clock.instant()
         val windowEnd = truncateToWindow(now)
-        val windowStart = windowEnd.minusSeconds(WINDOW_DURATION_SECONDS)
+        val windowStart = windowEnd.minusSeconds(windowDurationSeconds)
         
         log.debug("Processing aggregation window: $windowStart to $windowEnd")
         
@@ -73,8 +79,8 @@ class AggregationScheduler(
                         val lockSample = Timer.start()
                         distributedLockService.withLock<Void>(
                             lockKey = lockKey,
-                            timeout = Duration.ofSeconds(5),
-                            leaseTime = Duration.ofSeconds(60),
+                            timeout = Duration.ofSeconds(lockTimeoutSeconds),
+                            leaseTime = Duration.ofSeconds(lockLeaseTimeSeconds),
                             operation = processWindow(tenant.id!!, customer.id!!, windowStart, windowEnd)
                         )
                         .doOnSuccess {
@@ -152,9 +158,17 @@ class AggregationScheduler(
                                             )
                                         }
                                         .flatMap { aggregationWindow ->
-                                            // Persist to Postgres with resilience
+                                            // Persist to Postgres with resilience using explicit JSONB casting
                                             resilienceService.applyPostgresResilience(
-                                                aggregationWindowRepository.save(aggregationWindow)
+                                                aggregationWindowRepository.saveWithJsonb(
+                                                    aggregationWindow.tenantId,
+                                                    aggregationWindow.customerId,
+                                                    aggregationWindow.windowStart,
+                                                    aggregationWindow.windowEnd,
+                                                    aggregationWindow.aggregationData,
+                                                    aggregationWindow.created ?: LocalDateTime.now(clock),
+                                                    aggregationWindow.updated ?: LocalDateTime.now(clock)
+                                                )
                                                     .then(redisStateService.clearCounters(tenantId, customerId))
                                             )
                                                 .doOnSuccess {
@@ -176,7 +190,7 @@ class AggregationScheduler(
     
     private fun truncateToWindow(timestamp: Instant): Instant {
         val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / WINDOW_DURATION_SECONDS) * WINDOW_DURATION_SECONDS
+        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
         return Instant.ofEpochSecond(windowStartSeconds)
     }
 }

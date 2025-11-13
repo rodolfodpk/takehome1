@@ -237,9 +237,17 @@ class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
                     metadata = mapOf("tokens" to 100)
                 )
                 
+                val now = clock.instant()
+                val start = now.minusSeconds(3600)
+                val end = now.plusSeconds(3600)
+                
                 StepVerifier.create(
                     repository.save(event)
-                        .then(repository.findByEventId(event.eventId))
+                        .thenMany(
+                            repository.findByTenantIdAndCustomerIdAndTimestampBetween(
+                                event.tenantId, event.customerId, start, end
+                            )
+                        )
                 )
                     .assertNext { found ->
                         found.eventId shouldBe event.eventId
@@ -371,9 +379,17 @@ class JsonbMapTest : AbstractKotestIntegrationTest() {
                     metadata = metadata
                 )
                 
+                val now = clock.instant()
+                val start = now.minusSeconds(3600)
+                val end = now.plusSeconds(3600)
+                
                 StepVerifier.create(
-                    extensions.saveWithJsonb(event)
-                        .then(repository.findByEventId(event.eventId))
+                    repository.save(event)
+                        .thenMany(
+                            repository.findByTenantIdAndCustomerIdAndTimestampBetween(
+                                event.tenantId, event.customerId, start, end
+                            )
+                        )
                 )
                     .assertNext { found ->
                         found.metadata?.get("tokens") shouldBe 100

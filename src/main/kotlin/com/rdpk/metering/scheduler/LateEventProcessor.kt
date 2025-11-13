@@ -12,6 +12,7 @@ import com.rdpk.metering.service.AggregationService
 import com.rdpk.metering.service.LateEventService
 import com.rdpk.metering.service.RedisStateService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Flux
@@ -34,28 +35,28 @@ class LateEventProcessor(
     private val redisStateService: RedisStateService,
     private val resilienceService: ResilienceService,
     private val eventMetrics: EventMetrics,
-    private val clock: Clock
+    private val clock: Clock,
+    @Value("\${metering.window.duration-seconds:30}")
+    private val windowDurationSeconds: Long,
+    @Value("\${metering.late-event.batch-size:100}")
+    private val batchSize: Int
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
     
-    companion object {
-        private val WINDOW_DURATION_SECONDS = 30L
-        private const val BATCH_SIZE = 100
-    }
-    
     /**
      * Process late events periodically
-     * Runs every 5 minutes to process accumulated late events
+     * Default: 5 minutes (300000ms)
+     * Configure via: metering.late-event.processing-interval-ms
      */
-    @Scheduled(fixedRate = 300000) // 5 minutes
+    @Scheduled(fixedRateString = "\${metering.late-event.processing-interval-ms:300000}")
     fun processLateEvents() {
         log.debug("Starting late event processing")
         
         // Get all late events (in batches) with resilience
         resilienceService.applyPostgresResilience(
             lateEventRepository.findAll()
-                .take(BATCH_SIZE.toLong())
+                .take(batchSize.toLong())
         )
             .flatMap { lateEvent ->
                 processLateEvent(lateEvent)
@@ -88,7 +89,7 @@ class LateEventProcessor(
             .flatMap { savedEvent ->
                 // Determine which window this event belongs to
                 val windowStart = truncateToWindow(lateEvent.originalTimestamp)
-                val windowEnd = windowStart.plusSeconds(WINDOW_DURATION_SECONDS)
+                val windowEnd = windowStart.plusSeconds(windowDurationSeconds)
                 
                 // Check if aggregation window exists with resilience
                 resilienceService.applyPostgresResilience(
@@ -148,7 +149,15 @@ class LateEventProcessor(
                             }
                             .flatMap { updatedWindow ->
                                 resilienceService.applyPostgresResilience(
-                                    aggregationWindowRepository.save(updatedWindow)
+                                    aggregationWindowRepository.saveWithJsonb(
+                                        updatedWindow.tenantId,
+                                        updatedWindow.customerId,
+                                        updatedWindow.windowStart,
+                                        updatedWindow.windowEnd,
+                                        updatedWindow.aggregationData,
+                                        updatedWindow.created ?: LocalDateTime.now(clock),
+                                        updatedWindow.updated ?: LocalDateTime.now(clock)
+                                    )
                                 )
                                     .doOnSuccess {
                                         log.info("Updated aggregation window for late event: ${lateEvent.eventId}")
@@ -195,7 +204,15 @@ class LateEventProcessor(
                     }
                     .flatMap { newWindow ->
                         resilienceService.applyPostgresResilience(
-                            aggregationWindowRepository.save(newWindow)
+                            aggregationWindowRepository.saveWithJsonb(
+                                newWindow.tenantId,
+                                newWindow.customerId,
+                                newWindow.windowStart,
+                                newWindow.windowEnd,
+                                newWindow.aggregationData,
+                                newWindow.created ?: LocalDateTime.now(clock),
+                                newWindow.updated ?: LocalDateTime.now(clock)
+                            )
                         )
                             .doOnSuccess {
                                 log.info("Created aggregation window for late event: ${lateEvent.eventId}")
@@ -217,7 +234,7 @@ class LateEventProcessor(
     
     private fun truncateToWindow(timestamp: Instant): Instant {
         val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / WINDOW_DURATION_SECONDS) * WINDOW_DURATION_SECONDS
+        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
         return Instant.ofEpochSecond(windowStartSeconds)
     }
 }

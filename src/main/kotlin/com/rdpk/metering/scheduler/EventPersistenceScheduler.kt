@@ -6,6 +6,7 @@ import com.rdpk.metering.repository.UsageEventRepository
 import com.rdpk.metering.service.RedisEventStorageService
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Flux
@@ -22,22 +23,21 @@ class EventPersistenceScheduler(
     private val redisEventStorageService: RedisEventStorageService,
     private val usageEventRepository: UsageEventRepository,
     private val resilienceService: ResilienceService,
-    private val eventMetrics: EventMetrics
+    private val eventMetrics: EventMetrics,
+    @Value("\${metering.event.persistence-batch-size:1000}")
+    private val batchSize: Int
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
     
-    companion object {
-        private const val BATCH_SIZE = 1000
-    }
-    
     /**
      * Batch persist events from Redis to Postgres
-     * Runs every 2 seconds
+     * Default: 2 seconds (2000ms)
+     * Configure via: metering.event.persistence-interval-ms
      */
-    @Scheduled(fixedRate = 2000) // 2 seconds
+    @Scheduled(fixedRateString = "\${metering.event.persistence-interval-ms:2000}")
     fun batchPersistEvents() {
-        redisEventStorageService.getPendingEvents(BATCH_SIZE)
+        redisEventStorageService.getPendingEvents(batchSize)
             .flatMap { batch ->
                 if (batch.isEmpty()) {
                     Mono.empty<Void>()

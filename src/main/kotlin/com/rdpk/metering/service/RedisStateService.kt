@@ -6,6 +6,7 @@ import com.rdpk.metering.domain.UsageEvent
 import io.micrometer.core.instrument.Timer
 import org.redisson.api.RedissonReactiveClient
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.time.Duration
@@ -18,14 +19,12 @@ import java.time.Duration
 class RedisStateService(
     private val redissonReactive: RedissonReactiveClient,
     private val resilienceService: ResilienceService,
-    private val eventMetrics: EventMetrics
+    private val eventMetrics: EventMetrics,
+    @Value("\${metering.redis.counter-ttl-seconds:3600}")
+    private val counterTtlSeconds: Long
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
-    
-    companion object {
-        private const val COUNTER_TTL_SECONDS = 3600L // 1 hour TTL for counters
-    }
     
     /**
      * Update Redis counters for an event

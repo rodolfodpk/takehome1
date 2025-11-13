@@ -4,20 +4,16 @@ import com.rdpk.metering.domain.AggregationWindow
 import org.springframework.data.r2dbc.repository.Query
 import org.springframework.data.repository.reactive.ReactiveCrudRepository
 import org.springframework.stereotype.Repository
-import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.time.Instant
+import java.time.LocalDateTime
 
 @Repository
 interface AggregationWindowRepository : ReactiveCrudRepository<AggregationWindow, Long> {
     
     /**
-     * Find aggregation windows by tenant and customer
-     */
-    fun findByTenantIdAndCustomerId(tenantId: Long, customerId: Long): Flux<AggregationWindow>
-    
-    /**
      * Find aggregation window by tenant, customer, and window start (unique constraint)
+     * Required by requirements: "Finding aggregation windows for reporting"
      */
     fun findByTenantIdAndCustomerIdAndWindowStart(
         tenantId: Long,
@@ -26,53 +22,27 @@ interface AggregationWindowRepository : ReactiveCrudRepository<AggregationWindow
     ): Mono<AggregationWindow>
     
     /**
-     * Find aggregation windows by tenant and time range
+     * Save aggregation window with explicit JSONB casting for aggregation_data
+     * Uses explicit SQL casting to handle String -> JSONB conversion
      */
     @Query("""
-        SELECT * FROM aggregation_windows 
-        WHERE tenant_id = :tenantId 
-        AND window_start >= :start 
-        AND window_end <= :end
-        ORDER BY window_start DESC
+        INSERT INTO aggregation_windows (tenant_id, customer_id, window_start, window_end, aggregation_data, created, updated)
+        VALUES (:tenantId, :customerId, :windowStart, :windowEnd, :aggregationData::jsonb, :created, :updated)
+        ON CONFLICT (tenant_id, customer_id, window_start) 
+        DO UPDATE SET 
+            aggregation_data = EXCLUDED.aggregation_data,
+            window_end = EXCLUDED.window_end,
+            updated = EXCLUDED.updated
+        RETURNING id, tenant_id, customer_id, window_start, window_end, aggregation_data::text as aggregation_data, created, updated
     """)
-    fun findByTenantIdAndWindowStartBetween(
-        tenantId: Long,
-        start: Instant,
-        end: Instant
-    ): Flux<AggregationWindow>
-    
-    /**
-     * Find aggregation windows by customer and time range
-     */
-    @Query("""
-        SELECT * FROM aggregation_windows 
-        WHERE customer_id = :customerId 
-        AND window_start >= :start 
-        AND window_end <= :end
-        ORDER BY window_start DESC
-    """)
-    fun findByCustomerIdAndWindowStartBetween(
-        customerId: Long,
-        start: Instant,
-        end: Instant
-    ): Flux<AggregationWindow>
-    
-    /**
-     * Find aggregation windows by tenant, customer, and time range
-     */
-    @Query("""
-        SELECT * FROM aggregation_windows 
-        WHERE tenant_id = :tenantId 
-        AND customer_id = :customerId 
-        AND window_start >= :start 
-        AND window_end <= :end
-        ORDER BY window_start DESC
-    """)
-    fun findByTenantIdAndCustomerIdAndWindowStartBetween(
+    fun saveWithJsonb(
         tenantId: Long,
         customerId: Long,
-        start: Instant,
-        end: Instant
-    ): Flux<AggregationWindow>
+        windowStart: Instant,
+        windowEnd: Instant,
+        aggregationData: String,
+        created: LocalDateTime,
+        updated: LocalDateTime
+    ): Mono<AggregationWindow>
 }
 

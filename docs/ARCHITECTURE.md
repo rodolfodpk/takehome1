@@ -289,8 +289,15 @@ fun processEvent(request: UsageEventRequest): Mono<UsageEventResponse> {
     SELECT * FROM usage_events 
     WHERE tenant_id = :tenantId  -- Explicit tenant filter
     AND customer_id = :customerId
+    AND timestamp >= :start 
+    AND timestamp <= :end
 """)
-fun findByTenantIdAndCustomerId(tenantId: Long, customerId: Long): Flux<UsageEvent>
+fun findByTenantIdAndCustomerIdAndTimestampBetween(
+    tenantId: Long, 
+    customerId: Long, 
+    start: Instant, 
+    end: Instant
+): Flux<UsageEvent>
 ```
 
 **Security Guarantees**:
@@ -407,9 +414,17 @@ interface UsageEventRepository : ReactiveCrudRepository<UsageEvent, Long> {
         SELECT id, event_id, tenant_id, customer_id, timestamp, endpoint, tokens, model, latency_ms, 
                metadata::text as metadata, created, updated
         FROM usage_events 
-        WHERE tenant_id = :tenantId AND customer_id = :customerId
+        WHERE tenant_id = :tenantId 
+        AND customer_id = :customerId 
+        AND timestamp >= :start 
+        AND timestamp <= :end
     """)
-    fun findByTenantIdAndCustomerId(tenantId: Long, customerId: Long): Flux<UsageEvent>
+    fun findByTenantIdAndCustomerIdAndTimestampBetween(
+        tenantId: Long, 
+        customerId: Long, 
+        start: Instant, 
+        end: Instant
+    ): Flux<UsageEvent>
 }
 ```
 

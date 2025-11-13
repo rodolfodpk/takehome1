@@ -12,19 +12,8 @@ import java.time.Instant
 interface UsageEventRepository : ReactiveCrudRepository<UsageEvent, Long> {
     
     /**
-     * Find usage events by event ID (unique)
-     * Uses explicit JSONB casting to handle Map<String, Any> conversion
-     */
-    @Query("""
-        SELECT id, event_id, tenant_id, customer_id, timestamp, 
-               data::text as data, created, updated
-        FROM usage_events 
-        WHERE event_id = :eventId
-    """)
-    fun findByEventId(eventId: String): Mono<UsageEvent>
-    
-    /**
      * Find usage events by tenant, customer, and time range
+     * Required by requirements: "Querying usage events by time range and customer"
      * Uses explicit JSONB casting to handle Map<String, Any> conversion
      */
     @Query("""
@@ -43,51 +32,5 @@ interface UsageEventRepository : ReactiveCrudRepository<UsageEvent, Long> {
         start: Instant,
         end: Instant
     ): Flux<UsageEvent>
-    
-    /**
-     * Find usage events by tenant and time range
-     * Uses explicit JSONB casting to handle Map<String, Any> conversion
-     */
-    @Query("""
-        SELECT id, event_id, tenant_id, customer_id, timestamp, 
-               data::text as data, created, updated
-        FROM usage_events 
-        WHERE tenant_id = :tenantId 
-        AND timestamp >= :start 
-        AND timestamp <= :end
-        ORDER BY timestamp DESC
-    """)
-    fun findByTenantIdAndTimestampBetween(
-        tenantId: Long,
-        start: Instant,
-        end: Instant
-    ): Flux<UsageEvent>
-    
-    /**
-     * Find usage events by tenant and customer
-     * Uses explicit JSONB casting to handle Map<String, Any> conversion
-     */
-    @Query("""
-        SELECT id, event_id, tenant_id, customer_id, timestamp, 
-               data::text as data, created, updated
-        FROM usage_events 
-        WHERE tenant_id = :tenantId 
-        AND customer_id = :customerId
-        ORDER BY timestamp DESC
-    """)
-    fun findByTenantIdAndCustomerId(tenantId: Long, customerId: Long): Flux<UsageEvent>
-    
-    /**
-     * Find usage events by customer
-     * Uses explicit JSONB casting to handle Map<String, Any> conversion
-     */
-    @Query("""
-        SELECT id, event_id, tenant_id, customer_id, timestamp, 
-               data::text as data, created, updated
-        FROM usage_events 
-        WHERE customer_id = :customerId
-        ORDER BY timestamp DESC
-    """)
-    fun findByCustomerId(customerId: Long): Flux<UsageEvent>
 }
 

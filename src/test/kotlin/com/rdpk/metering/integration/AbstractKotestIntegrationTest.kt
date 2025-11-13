@@ -7,11 +7,13 @@ import com.rdpk.metering.domain.Tenant
 import com.rdpk.metering.domain.UsageEvent
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.Spec
+import io.kotest.core.test.TestCase
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.extensions.spring.SpringExtension
 import org.redisson.api.RedissonReactiveClient
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.ApplicationContext
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -107,6 +109,9 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
 
     @Autowired(required = false)
     var redissonReactiveClient: RedissonReactiveClient? = null
+    
+    @Autowired
+    lateinit var applicationContext: ApplicationContext
 
     /**
      * Clock bean for consistent time operations in tests
@@ -133,27 +138,37 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
         super.beforeSpec(spec)
         cleanupDatabase()
         cleanupRedis()
+        // Reset circuit breakers to ensure clean state for each test class
+        resetCircuitBreakers()
+    }
+    
+    /**
+     * Reset circuit breakers to CLOSED state
+     * This ensures tests start with a clean circuit breaker state
+     */
+    protected fun resetCircuitBreakers() {
+        try {
+            val circuitBreakerRegistry = applicationContext.getBean(
+                io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry::class.java
+            )
+            circuitBreakerRegistry.circuitBreaker("postgres")?.transitionToClosedState()
+            circuitBreakerRegistry.circuitBreaker("redis")?.transitionToClosedState()
+        } catch (e: Exception) {
+            // Circuit breaker reset is best-effort - don't fail tests if it's unavailable
+        }
     }
 
     /**
-     * Optional: Cleanup before each test method (beforeTest)
-     * Override this in your test class if you need per-test cleanup
-     * 
-     * Example:
-     * ```kotlin
-     * override fun beforeTest(testCase: TestCase) {
-     *     super.beforeTest(testCase)
-     *     cleanupDatabase()
-     *     cleanupRedis()
-     * }
-     * ```
+     * Cleanup before each test method (beforeTest)
+     * Ensures each test starts with a clean database, Redis, and circuit breaker state
+     * This prevents data leakage between tests in the same test class
      */
-    // Uncomment if you need per-test cleanup:
-    // override fun beforeTest(testCase: TestCase) {
-    //     super.beforeTest(testCase)
-    //     cleanupDatabase()
-    //     cleanupRedis()
-    // }
+    override suspend fun beforeTest(testCase: TestCase) {
+        super.beforeTest(testCase)
+        cleanupDatabase()      // Clean Postgres before each test
+        cleanupRedis()         // Clean Redis before each test
+        resetCircuitBreakers() // Reset circuit breakers before each test
+    }
 
     /**
      * Cleanup all database tables

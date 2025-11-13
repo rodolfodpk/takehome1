@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.core.instrument.Timer
 import org.redisson.api.RedissonReactiveClient
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -21,14 +22,15 @@ class RedisEventStorageService(
     private val redissonReactive: RedissonReactiveClient,
     private val objectMapper: ObjectMapper,
     private val resilienceService: ResilienceService,
-    private val eventMetrics: EventMetrics
+    private val eventMetrics: EventMetrics,
+    @Value("\${metering.redis.event-ttl-hours:1}")
+    private val eventTtlHours: Long
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
     
     companion object {
         private const val EVENTS_LIST_KEY = "events:pending:list"
-        private const val EVENT_TTL_HOURS = 1L // Events expire after 1 hour (should be processed by then)
     }
     
     /**

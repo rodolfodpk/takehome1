@@ -7,6 +7,7 @@ import com.rdpk.metering.domain.LateEvent
 import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.repository.LateEventRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.time.Clock
@@ -24,15 +25,14 @@ class LateEventService(
     private val objectMapper: ObjectMapper,
     private val resilienceService: ResilienceService,
     private val eventMetrics: EventMetrics,
-    private val clock: Clock
+    private val clock: Clock,
+    @Value("\${metering.window.duration-seconds:30}")
+    private val windowDurationSeconds: Long,
+    @Value("\${metering.late-event.threshold-minutes:1}")
+    private val lateThresholdMinutes: Long
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
-    
-    companion object {
-        private val WINDOW_DURATION_SECONDS = 30L
-        private val LATE_THRESHOLD_MINUTES = 1L // Events < 1 minute late are processed immediately
-    }
     
     /**
      * Check if event is late and handle accordingly
@@ -49,7 +49,7 @@ class LateEventService(
             val lateByMinutes = Duration.between(eventWindowStart, now).toMinutes()
             
             // If < 1 minute late, try to process immediately (likely network delay)
-            if (lateByMinutes < LATE_THRESHOLD_MINUTES) {
+            if (lateByMinutes < lateThresholdMinutes) {
                 log.debug("Event ${event.eventId} is < 1 minute late, will be processed normally")
                 return Mono.just(false) // Process normally
             } else {
@@ -108,7 +108,7 @@ class LateEventService(
      */
     private fun truncateToWindow(timestamp: Instant): Instant {
         val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / WINDOW_DURATION_SECONDS) * WINDOW_DURATION_SECONDS
+        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
         return Instant.ofEpochSecond(windowStartSeconds)
     }
     

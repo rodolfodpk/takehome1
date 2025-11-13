@@ -51,7 +51,7 @@ class R2dbcConfig {
             }
         }
     }
-
+    
     /**
      * Reading converter: String -> Map<String, Any>
      * Converts JSON string (from JSONB column cast to text) to Kotlin Map
