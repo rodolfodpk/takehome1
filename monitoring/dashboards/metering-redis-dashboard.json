@@ -1,0 +1,227 @@
+{
+  "dashboard": {
+    "title": "Metering - Redis Metrics",
+    "tags": ["metering", "redis", "technical"],
+    "timezone": "browser",
+    "refresh": "10s",
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Redis Storage Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_redis_storage_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_redis_storage_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_redis_storage_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 4,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.01, "color": "yellow"},
+                {"value": 0.02, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Redis Counter Update Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_redis_counter_update_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_redis_counter_update_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_redis_counter_update_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 4
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Redis Read Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_redis_read_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_redis_read_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_redis_read_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 4
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Events Stored per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_redis_storage_latency_seconds_count[1m])",
+            "legendFormat": "Events/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Counter Updates per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_redis_counter_update_latency_seconds_count[1m])",
+            "legendFormat": "Counter Updates/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Reads per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_redis_read_latency_seconds_count[1m])",
+            "legendFormat": "Reads/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Redis P95 Storage Latency",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "metering_redis_storage_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95 Latency",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 4,
+            "min": 0,
+            "max": 0.1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.01, "color": "yellow"},
+                {"value": 0.02, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Redis Operation Summary",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(metering_redis_storage_latency_seconds_count[1m])",
+            "legendFormat": "Storage Ops/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(metering_redis_counter_update_latency_seconds_count[1m])",
+            "legendFormat": "Counter Ops/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(metering_redis_read_latency_seconds_count[1m])",
+            "legendFormat": "Read Ops/sec",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      }
+    ],
+    "schemaVersion": 27,
+    "version": 0
+  }
+}
+

@@ -1,0 +1,279 @@
+{
+  "dashboard": {
+    "title": "Metering - Postgres/R2DBC Metrics",
+    "tags": ["metering", "postgres", "r2dbc", "technical"],
+    "timezone": "browser",
+    "refresh": "10s",
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "R2DBC Connection Pool - Acquired",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "r2dbc_pool_acquired{name=\"connectionPool\"}",
+            "legendFormat": "Acquired Connections",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "R2DBC Connection Pool - Pending",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "r2dbc_pool_pending{name=\"connectionPool\"}",
+            "legendFormat": "Pending Requests",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "R2DBC Connection Pool - Idle",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "r2dbc_pool_idle{name=\"connectionPool\"}",
+            "legendFormat": "Idle Connections",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "R2DBC Connection Pool Utilization",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "(r2dbc_pool_acquired{name=\"connectionPool\"} / r2dbc_pool_max{name=\"connectionPool\"}) * 100",
+            "legendFormat": "Pool Utilization %",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 80, "color": "yellow"},
+                {"value": 90, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "R2DBC Connection Pool - Max",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "r2dbc_pool_max{name=\"connectionPool\"}",
+            "legendFormat": "Max Connections",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Database Persistence Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.05, "color": "yellow"},
+                {"value": 0.1, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Events Persisted per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_db_persistence_latency_seconds_count[1m])",
+            "legendFormat": "Events/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Batch Size Distribution",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_db_persistence_batch_size_total",
+            "legendFormat": "Batch Size",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Batches per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_db_persistence_batch_size_total[1m])",
+            "legendFormat": "Batches/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Connection Timeouts",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "r2dbc_pool_timeout{name=\"connectionPool\"}",
+            "legendFormat": "Timeouts",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "DB P95 Persistence Latency",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95 Latency",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3,
+            "min": 0,
+            "max": 0.1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.05, "color": "yellow"},
+                {"value": 0.1, "color": "red"}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "schemaVersion": 27,
+    "version": 0
+  }
+}
+

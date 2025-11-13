@@ -1,0 +1,485 @@
+{
+  "dashboard": {
+    "title": "Metering - Business Metrics",
+    "tags": ["metering", "business", "events"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Events Ingested per Second (Total)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_events_ingested_total{type=\"total\"}[1m])",
+            "legendFormat": "Events/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Events Ingested by Tenant (Top 10)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "topk(10, rate(metering_events_ingested_total{type=\"by_tenant\"}[1m]))",
+            "legendFormat": "Tenant {{tenant_id}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Events Ingested by Customer (Top 10)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "topk(10, rate(metering_events_ingested_total{type=\"by_customer\"}[1m]))",
+            "legendFormat": "Customer {{customer_id}} (Tenant {{tenant_id}})",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Ingestion Errors per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_events_ingestion_errors_total[1m])",
+            "legendFormat": "Errors/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 10, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Event Processing Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_events_processing_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_events_processing_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_events_processing_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.1, "color": "yellow"},
+                {"value": 0.2, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Ingestion Error Rate %",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "(rate(metering_events_ingestion_errors_total[1m]) / rate(metering_events_ingested_total{type=\"total\"}[1m])) * 100",
+            "legendFormat": "Error Rate %",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.1, "color": "yellow"},
+                {"value": 1, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Aggregation Windows Processed per Minute",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_aggregation_windows_processed_total[1m]) * 60",
+            "legendFormat": "Windows/min",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Aggregation Processing Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_aggregation_processing_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_aggregation_processing_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_aggregation_processing_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Aggregation Errors per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_aggregation_windows_errors_total[1m])",
+            "legendFormat": "Errors/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Aggregation Success Rate %",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "(rate(metering_aggregation_windows_processed_total[1m]) / (rate(metering_aggregation_windows_processed_total[1m]) + rate(metering_aggregation_windows_errors_total[1m]))) * 100",
+            "legendFormat": "Success Rate %",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 95, "color": "yellow"},
+                {"value": 99, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Late Events Detected per Minute",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_events_late_detected_total[1m]) * 60",
+            "legendFormat": "Detected/min",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Late Events Processed per Minute",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_events_late_processed_total[1m]) * 60",
+            "legendFormat": "Processed/min",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 13,
+        "title": "Late Event Backlog",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_events_late_detected_total - metering_events_late_processed_total",
+            "legendFormat": "Backlog",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 1000, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "Late Event Processing Rate %",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "(rate(metering_events_late_processed_total[1m]) / rate(metering_events_late_detected_total[1m])) * 100",
+            "legendFormat": "Processing Rate %",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 15,
+        "title": "Database Batch Size Distribution",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_db_persistence_batch_size_total",
+            "legendFormat": "Batch Size",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 56},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Database Persistence Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_db_persistence_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 56},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3
+          }
+        }
+      },
+      {
+        "id": 17,
+        "title": "Batches per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_db_persistence_batch_size_total[1m])",
+            "legendFormat": "Batches/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 64},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 18,
+        "title": "Lock Acquisition Latency",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "metering_lock_acquisition_latency_seconds{quantile=\"0.50\"}",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "metering_lock_acquisition_latency_seconds{quantile=\"0.95\"}",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "metering_lock_acquisition_latency_seconds{quantile=\"0.99\"}",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 64},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "decimals": 3
+          }
+        }
+      },
+      {
+        "id": 19,
+        "title": "Lock Contention Events per Second",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(metering_lock_contention_total[1m])",
+            "legendFormat": "Contention/sec",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 72},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 20,
+        "title": "Lock Contention Rate %",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "(rate(metering_lock_contention_total[1m]) / rate(metering_lock_acquisition_latency_seconds_count[1m])) * 100",
+            "legendFormat": "Contention Rate %",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 72},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "schemaVersion": 27,
+    "version": 0
+  }
+}
+
