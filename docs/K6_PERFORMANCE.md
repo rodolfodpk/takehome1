@@ -1,6 +1,6 @@
 # K6 Performance Testing
 
-Comprehensive performance testing suite for the IoT Devices Management System using K6.
+Comprehensive performance testing suite for the Real-Time API Metering & Aggregation Engine using K6.
 
 ## Overview
 

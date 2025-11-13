@@ -1,6 +1,6 @@
 # Development Guide
 
-Complete development guide for the IoT Devices Management System including all make commands and workflows.
+Complete development guide for the Real-Time API Metering & Aggregation Engine including all make commands and workflows.
 
 ## Quick Start
 
@@ -45,10 +45,10 @@ make health         # Check application health status
 #### Unit and Integration Tests
 
 ```bash
-make test           # Run all tests (68 tests, ~11 seconds)
+make test           # Run all tests (10 test files, ~10-15 seconds)
 ```
 
-**Note:** Tests use Testcontainers, so Docker must be running. PostgreSQL is automatically provided by Testcontainers - no Docker Compose needed.
+**Note:** Tests use Testcontainers, so Docker must be running. PostgreSQL and Redis are automatically provided by Testcontainers - no Docker Compose needed.
 
 #### K6 Performance Testing
 
@@ -126,8 +126,8 @@ make help          # Show all available commands
 
 ```bash
 # Clone the repository
-git clone https://github.com/rodolfodpk/devices.git
-cd devices
+git clone https://github.com/rodolfodpk/takehome1.git
+cd takehome1
 
 # Run tests to verify everything works
 make test
@@ -146,17 +146,17 @@ All tests use Testcontainers for PostgreSQL. No Docker Compose needed:
 # Run all tests
 make test
 
-# Output: 68 tests, ~11 seconds
+# Output: 10 test files, ~10-15 seconds
 ```
 
 Test Categories:
-- Domain Model Tests (12)
-- Architecture Tests (13)
-- Repository Integration Tests (9)
-- Service Integration Tests (15)
-- Controller Integration Tests (13)
-- E2E Tests (4)
-- Observability Integration Tests (2)
+- Domain Tests (3 files: UsageEvent, Tenant, Customer)
+- Service Unit Tests (1 file: AggregationService)
+- Repository Integration Tests (1 file: UsageEventRepository)
+- Service Integration Tests (1 file: EventProcessingService)
+- E2E Tests (1 file: EventIngestion)
+- JSONB Tests (1 file: JsonbMap)
+- Additional integration tests (2 files)
 
 #### K6 Performance Tests
 
@@ -316,7 +316,7 @@ docker-compose stop postgres
 docker-compose logs postgres
 
 # Access PostgreSQL
-docker exec -it devices-postgres psql -U devices -d devices
+docker exec -it takehome1-postgres psql -U metering -d metering
 ```
 
 ### Full Observability Stack
@@ -387,15 +387,53 @@ make k6-smoke
 
 ## CI/CD
 
-### GitHub Actions
+### GitHub Actions Workflow
 
-Tests run automatically on push to main branch:
+The project uses GitHub Actions for continuous integration:
+
+- **Workflow File**: `.github/workflows/ci.yml`
+- **Triggers**: Push and pull requests to `main` branch
+- **Java Version**: 21 (Temurin distribution)
+- **Services**: Docker-in-Docker for Testcontainers
+- **Steps**:
+  1. Checkout code
+  2. Set up JDK 21 with Maven cache
+  3. Run tests with coverage (`mvn clean test jacoco:report`)
+  4. Upload coverage to Codecov
+
+### Code Coverage
+
+- **Tool**: JaCoCo (configured in `pom.xml`)
+- **Report Location**: `target/site/jacoco/index.html`
+- **Online**: Coverage reports are automatically uploaded to Codecov
+- **Badges**: CI and Codecov badges are displayed in README.md
+
+### Codecov Configuration
+
+- **Config File**: `codecov.yml`
+- **Coverage Target**: 80% (project and patch)
+- **Threshold**: 1% (allows small decreases)
+
+### Viewing Coverage
 
 ```bash
-# See .github/workflows/ci.yml for details
+# Generate local coverage report
+mvn jacoco:report
+
+# View report
+open target/site/jacoco/index.html
 ```
 
-Manual trigger:
+### CI Badges
+
+The README displays two badges:
+- **CI Badge**: Shows build status (passing/failing)
+- **Codecov Badge**: Shows code coverage percentage
+
+Badges update automatically after each CI run.
+
+### Manual Trigger
+
 ```bash
 # Push to trigger CI
 git push origin main

@@ -1,333 +1,495 @@
 # Testing Guide
 
-Comprehensive testing strategy for the IoT Devices Management System using JUnit 5 and Testcontainers.
+Comprehensive testing strategy for the Real-Time API Metering & Aggregation Engine using Kotest (BDD style) and Testcontainers.
 
 ## Test Strategy
 
-The project uses **package-per-layer** architecture with comprehensive integration and E2E tests:
+The project uses **package-per-layer** architecture with comprehensive unit, integration, and E2E tests:
 
-- ✅ **Domain Tests** (7 tests) - Domain model validation
-- ✅ **Repository Tests** (9 tests) - Database operations with real PostgreSQL
-- ✅ **Service Tests** (15 tests) - Business logic with real repository
-- ✅ **Controller Tests** (13 tests) - HTTP endpoints with WebTestClient
-- ✅ **E2E Tests** (4 tests) - Complete application flows
-- ✅ **Observability Tests** (2 tests) - Actuator endpoints
-- **Total: 50 tests, 0 failures**
+- ✅ **Domain Tests** (3 test files) - Pure domain model validation (no dependencies)
+- ✅ **Service Unit Tests** (1 test file) - Pure business logic (AggregationService)
+- ✅ **Repository Integration Tests** (1 test file) - Database operations with real PostgreSQL
+- ✅ **Service Integration Tests** (1 test file) - Business logic with real repository and Redis
+- ✅ **E2E Tests** (1 test file) - Complete HTTP flow with WebTestClient
+- ✅ **JSONB Tests** (1 test file) - JSONB conversion verification
+- **Total: 10 test files, using Kotest BDD style**
 
-All integration tests use **Testcontainers** for real PostgreSQL database - **NO MOCKS**.
+All integration tests use **Testcontainers** for real PostgreSQL and Redis - **NO MOCKS**.
 
 ## Running Tests
 
 ### Run All Tests
 
 ```bash
-# Run all tests (~11 seconds)
+# Run all tests (uses Testcontainers, no Docker Compose needed)
 make test
 
 # Or directly with Maven
 mvn test
 ```
 
+**Note:** Tests use Testcontainers, so Docker must be running. PostgreSQL and Redis are automatically provided by Testcontainers - no Docker Compose needed.
+
 ### Run Specific Test Classes
 
 ```bash
 # Domain tests
-mvn test -Dtest=DeviceTest
+mvn test -Dtest=UsageEventTest
+mvn test -Dtest=TenantTest
+mvn test -Dtest=CustomerTest
 
-# Repository tests
-mvn test -Dtest=DeviceRepositoryIntegrationTest
+# Service unit tests
+mvn test -Dtest=AggregationServiceUnitTest
 
-# Service tests
-mvn test -Dtest=DeviceServiceIntegrationTest
+# Repository integration tests
+mvn test -Dtest=UsageEventRepositoryIntegrationTest
 
-# Controller tests
-mvn test -Dtest=DeviceControllerIntegrationTest
+# Service integration tests
+mvn test -Dtest=EventProcessingServiceIntegrationTest
 
 # E2E tests
-mvn test -Dtest=DeviceE2ETest
+mvn test -Dtest=EventIngestionE2ETest
 
-# Observability tests
-mvn test -Dtest=ObservabilityIntegrationTest
+# JSONB conversion tests
+mvn test -Dtest=JsonbMapTest
 ```
 
 ### Run with Coverage Report
 
 ```bash
-mvn verify
+mvn clean test jacoco:report
 ```
 
 Coverage reports are generated in `target/site/jacoco/index.html`.
 
 ## Test Performance
 
-- **Execution Time:** ~11 seconds for 50 tests
-- **Container Reuse:** Shared PostgreSQL container across all tests
-- **Isolation:** Database cleanup via `TRUNCATE ... RESTART IDENTITY CASCADE` in `@BeforeEach`
-- **No @DirtiesContext:** Using `@TestInstance(PER_CLASS)` for performance
-- **Testcontainers:** PostgreSQL container with `withReuse(true)` for fast tests
+- **Execution Time:** ~10-15 seconds for all tests
+- **Container Reuse:** Shared PostgreSQL and Redis containers across all tests
+- **Isolation:** Database and Redis cleanup before each test class
+- **Sequential Execution:** Tests run in order (`IsolationMode.SingleInstance`) for multi-step scenarios
+- **Testcontainers:** PostgreSQL 17.2 and Redis 7-alpine containers with `withReuse(true)` for fast tests
 
 ## Test Structure
 
 ### Package-Per-Layer Architecture
 
 ```
-src/test/java/com/rdpk/
-├── device/
-│   ├── domain/              # Domain unit tests
-│   │   └── DeviceTest.java
-│   ├── integration/
-│   │   ├── repository/      # Repository integration tests
-│   │   │   └── DeviceRepositoryIntegrationTest.java
-│   │   ├── service/          # Service integration tests
-│   │   │   └── DeviceServiceIntegrationTest.java
-│   │   ├── controller/       # Controller integration tests
-│   │   │   └── DeviceControllerIntegrationTest.java
-│   │   └── observability/   # Actuator tests
-│   │       └── ObservabilityIntegrationTest.java
-│   ├── e2e/                 # End-to-end tests
-│   │   └── DeviceE2ETest.java
-│   └── fixture/             # Test data builders
-│       └── DeviceFixture.java
-├── AbstractIntegrationTest.java    # Base test class
-└── config/
-    └── SharedPostgresContainer.java # Singleton container
+src/test/kotlin/com/rdpk/metering/
+├── domain/                    # Unit tests (pure domain logic)
+│   ├── UsageEventTest.kt      # UsageEvent domain validation
+│   ├── TenantTest.kt          # Tenant domain validation
+│   └── CustomerTest.kt        # Customer domain validation
+├── service/                   # Unit tests (pure business logic)
+│   └── AggregationServiceUnitTest.kt  # Aggregation logic (no DB/Redis)
+└── integration/              # Integration tests (real DB/Redis)
+    ├── AbstractKotestIntegrationTest.kt  # Base class for integration tests
+    ├── SharedTestContainers.kt            # Singleton containers
+    ├── JsonbMapTest.kt                    # JSONB conversion test
+    ├── repository/
+    │   └── UsageEventRepositoryIntegrationTest.kt
+    ├── service/
+    │   └── EventProcessingServiceIntegrationTest.kt
+    └── e2e/
+        └── EventIngestionE2ETest.kt
 ```
 
 ### Base Test Class
 
-All integration tests extend `AbstractIntegrationTest`:
+All integration tests extend `AbstractKotestIntegrationTest`:
 
-```java
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public abstract class AbstractIntegrationTest {
+```kotlin
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+abstract class AbstractKotestIntegrationTest : DescribeSpec() {
+
+    override fun extensions() = listOf(SpringExtension)
     
     @Autowired
-    protected WebTestClient webTestClient;
+    lateinit var clock: Clock
     
-    @Autowired
-    protected DatabaseClient databaseClient;
-    
-    @BeforeEach
-    void setUp() {
-        // Clean database before each test
-        databaseClient.sql("TRUNCATE TABLE devices RESTART IDENTITY CASCADE")
-            .fetch().rowsUpdated().block();
+    // Automatic cleanup before test class
+    override fun beforeSpec(spec: Spec) {
+        // Clean database and Redis
     }
 }
 ```
 
-### Singleton Container
+**Features:**
+- Extends `DescribeSpec` (Kotest BDD style)
+- Uses `SpringExtension` for Spring integration
+- Automatic cleanup before each test class (DB + Redis)
+- Sequential test execution (`IsolationMode.SingleInstance`)
+- Injects `Clock` bean for time consistency
 
-`SharedPostgresContainer` ensures a single PostgreSQL container is shared across all tests:
+### Singleton Containers
 
-```java
-public class SharedPostgresContainer {
-    private static final PostgreSQLContainer<?> INSTANCE = new PostgreSQLContainer<>("postgres:17.2")
-        .withReuse(true);
+`SharedTestContainers` ensures single PostgreSQL and Redis containers are shared across all tests:
+
+```kotlin
+object SharedTestContainers {
+    val postgresContainer: PostgreSQLContainer<*> = PostgreSQLContainer(
+        DockerImageName.parse("postgres:17.2")
+    )
+        .withDatabaseName("testdb")
+        .withReuse(true)
     
-    public static PostgreSQLContainer<?> getInstance() {
-        return INSTANCE;
-    }
+    val redisContainer: GenericContainer<*> = GenericContainer(
+        DockerImageName.parse("redis:7-alpine")
+    )
+        .withReuse(true)
 }
 ```
 
-## Test Coverage
-
-### Domain Validation Rules
-
-Tests verify critical business rules:
-
-✅ **Creation time immutability**
-- `createdAt` is set once during creation
-- Cannot be modified via update operations
-
-✅ **In-use device restrictions**
-- `name` and `brand` cannot be updated when device is `IN_USE`
-- Device must be `AVAILABLE` to modify these properties
-
-✅ **Deletion protection**
-- Devices with state `IN_USE` cannot be deleted
-- Device must be `AVAILABLE` to delete
-
-### Test Examples
-
-**Domain Test:**
-```java
-@Test
-void shouldNotAllowNameUpdateWhenInUse() {
-    Device device = deviceRepository.save(
-        fixture.createAvailableDevice("Sensor")
-    ).block();
-    
-    Device inUseDevice = device.withState(DeviceState.IN_USE);
-    deviceRepository.save(inUseDevice).block();
-    
-    assertThatThrownBy(() -> 
-        deviceService.updateDevice(inUseDevice.id(), 
-            UpdateDeviceRequest.builder()
-                .name("NewName")
-                .build())
-    ).isInstanceOf(DeviceUpdateException.class);
-}
-```
-
-**E2E Test:**
-```java
-@Test
-void shouldEnforceBusinessRulesForInUseDevices() {
-    // Create device
-    CreateDeviceResponse created = createDevice("Camera", "Ring");
-    
-    // Change to IN_USE
-    updateDeviceState(created.id(), DeviceState.IN_USE);
-    
-    // Try to update name (should fail)
-    webTestClient.patch()
-        .uri("/api/v1/devices/{id}", created.id())
-        .bodyValue(UpdateDeviceRequest.builder()
-            .name("New Camera")
-            .build())
-        .exchange()
-        .expectStatus().isBadRequest();
-}
-```
+**Benefits:**
+- Fast test execution (containers start once)
+- Resource efficient (shared containers)
+- Automatic cleanup between test classes
 
 ## Test Categories
 
-### 1. Domain Tests (`DeviceTest.java`)
+### 1. Domain Tests
 
-Unit tests for domain model validation:
-- Device creation
-- State transitions
-- Property updates
-- Business rule validation
+Unit tests for domain model validation (pure domain logic, no dependencies):
 
-**Count:** 7 tests
+**Files:**
+- `UsageEventTest.kt` - UsageEvent entity validation
+- `TenantTest.kt` - Tenant entity validation
+- `CustomerTest.kt` - Customer entity validation
 
-### 2. Repository Tests (`DeviceRepositoryIntegrationTest.java`)
+**Example:**
+```kotlin
+class UsageEventTest : DescribeSpec({
+    describe("UsageEvent domain entity") {
+        it("should create UsageEvent with all fields") {
+            val event = UsageEvent(
+                eventId = "event-123",
+                tenantId = 1L,
+                customerId = 100L,
+                timestamp = Instant.now(),
+                endpoint = "/api/completion",
+                tokens = 100,
+                model = "gpt-4",
+                latencyMs = 250,
+                metadata = mapOf("tokens" to 100)
+            )
+            
+            event.eventId shouldBe "event-123"
+            event.tenantId shouldBe 1L
+        }
+    }
+})
+```
 
-Integration tests with real PostgreSQL:
-- Save operation (insert)
-- Save operation (update)
-- Find by ID
-- Find all
-- Find by brand
-- Find by state
-- Delete operation
-- Edge cases
+### 2. Service Unit Tests
 
-**Count:** 9 tests
+Unit tests for pure business logic (no database or Redis):
 
-### 3. Service Tests (`DeviceServiceIntegrationTest.java`)
+**Files:**
+- `AggregationServiceUnitTest.kt` - Aggregation logic (totals, by endpoint, by model)
 
-Business logic tests with real repository:
-- Create device
-- Get all devices
-- Get device by ID
-- Get devices by brand
-- Get devices by state
-- Update device name
-- Update device brand
-- Update device state
-- Delete device
-- Create time immutability
-- In-use device restrictions
-- Deletion protection
+**Example:**
+```kotlin
+class AggregationServiceUnitTest : DescribeSpec({
+    describe("AggregationService") {
+        it("should aggregate events correctly") {
+            val events = listOf(
+                UsageEvent(..., tokens = 100, ...),
+                UsageEvent(..., tokens = 200, ...)
+            )
+            
+            val result = aggregationService.aggregateWindow(
+                tenantId = 1L,
+                customerId = 100L,
+                windowStart = start,
+                windowEnd = end,
+                events = events
+            )
+            
+            result.totalTokens shouldBe 300
+        }
+    }
+})
+```
 
-**Count:** 15 tests
+### 3. Repository Integration Tests
 
-### 4. Controller Tests (`DeviceControllerIntegrationTest.java`)
+Integration tests with real PostgreSQL (via Testcontainers):
 
-HTTP endpoint tests with WebTestClient:
-- POST /api/v1/devices
-- GET /api/v1/devices
-- GET /api/v1/devices?brand=X
-- GET /api/v1/devices?state=Y
-- GET /api/v1/devices/{id}
-- PATCH /api/v1/devices/{id}
-- DELETE /api/v1/devices/{id}
-- Error handling (404, 400)
+**Files:**
+- `UsageEventRepositoryIntegrationTest.kt` - Database operations
 
-**Count:** 13 tests
+**Example:**
+```kotlin
+class UsageEventRepositoryIntegrationTest : AbstractKotestIntegrationTest() {
+    
+    @Autowired
+    lateinit var repository: UsageEventRepository
+    
+    init {
+        describe("UsageEventRepository") {
+            it("should save and find usage event by eventId") {
+                val event = UsageEvent(
+                    eventId = "test-event-${System.currentTimeMillis()}",
+                    tenantId = testTenantId,
+                    customerId = testCustomerId,
+                    timestamp = clock.instant(), // Use injected Clock
+                    endpoint = "/api/completion",
+                    metadata = mapOf("tokens" to 100)
+                )
+                
+                StepVerifier.create(
+                    repository.save(event)
+                        .then(repository.findByEventId(event.eventId))
+                )
+                    .assertNext { found ->
+                        found.eventId shouldBe event.eventId
+                        found.metadata?.get("tokens") shouldBe 100
+                    }
+                    .verifyComplete()
+            }
+        }
+    }
+}
+```
 
-### 5. E2E Tests (`DeviceE2ETest.java`)
+**Key Points:**
+- Uses `AbstractKotestIntegrationTest` base class
+- Uses injected `Clock` bean for time operations
+- Uses `StepVerifier` for reactive assertions
+- Real PostgreSQL container (no mocks)
 
-End-to-end tests covering complete flows:
-- Create → Get → Update → Delete
-- Business rules enforcement
-- Concurrent operations
-- Error scenarios
+### 4. Service Integration Tests
 
-**Count:** 4 tests
+Integration tests with real PostgreSQL and Redis:
 
-### 6. Observability Tests (`ObservabilityIntegrationTest.java`)
+**Files:**
+- `EventProcessingServiceIntegrationTest.kt` - Event processing with real dependencies
 
-Actuator endpoint tests:
-- Health check endpoint
-- Metrics endpoint
-- Circuit breaker metrics
+**Example:**
+```kotlin
+class EventProcessingServiceIntegrationTest : AbstractKotestIntegrationTest() {
+    
+    @Autowired
+    lateinit var eventProcessingService: EventProcessingService
+    
+    init {
+        describe("EventProcessingService") {
+            it("should process event and store in Redis") {
+                val request = UsageEventRequest(
+                    eventId = "test-event-1",
+                    tenantId = testTenantId.toString(),
+                    customerId = testCustomerId,
+                    timestamp = clock.instant(),
+                    endpoint = "/api/completion",
+                    metadata = EventMetadata(tokens = 100)
+                )
+                
+                StepVerifier.create(
+                    eventProcessingService.processEvent(request)
+                )
+                    .assertNext { response ->
+                        response.status shouldBe "processed"
+                    }
+                    .verifyComplete()
+            }
+        }
+    }
+}
+```
 
-**Count:** 2 tests
+### 5. E2E Tests
+
+End-to-end tests covering complete HTTP flow:
+
+**Files:**
+- `EventIngestionE2ETest.kt` - Full HTTP flow with WebTestClient
+
+**Example:**
+```kotlin
+@AutoConfigureWebTestClient
+class EventIngestionE2ETest : AbstractKotestIntegrationTest() {
+    
+    @Autowired
+    lateinit var webTestClient: WebTestClient
+    
+    init {
+        describe("Event Ingestion E2E Flow") {
+            it("should ingest event via HTTP and return success") {
+                val request = UsageEventRequest(
+                    eventId = "e2e-event-1",
+                    tenantId = testTenantId.toString(),
+                    customerId = testCustomerId,
+                    timestamp = clock.instant(),
+                    endpoint = "/api/completion",
+                    metadata = EventMetadata(tokens = 100)
+                )
+                
+                webTestClient.post()
+                    .uri("/api/v1/events")
+                    .header("X-Tenant-Id", testTenantId.toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .exchange()
+                    .expectStatus().isCreated
+                    .expectBody(UsageEventResponse::class.java)
+                    .value { response ->
+                        response.status shouldBe "processed"
+                    }
+            }
+        }
+    }
+}
+```
+
+### 6. JSONB Conversion Tests
+
+Tests for JSONB `Map<String, Any>` conversion:
+
+**Files:**
+- `JsonbMapTest.kt` - Verifies JSONB mapping works correctly
+
+**Example:**
+```kotlin
+class JsonbMapTest : AbstractKotestIntegrationTest() {
+    
+    init {
+        describe("JSONB Map conversion") {
+            it("should save and retrieve Map<String, Any> as JSONB") {
+                val metadata = mapOf(
+                    "tokens" to 100,
+                    "model" to "gpt-4",
+                    "inputTokens" to 50,
+                    "outputTokens" to 50
+                )
+                
+                val event = UsageEvent(
+                    eventId = "test-jsonb-1",
+                    tenantId = testTenantId,
+                    customerId = testCustomerId,
+                    timestamp = clock.instant(),
+                    endpoint = "/api/completion",
+                    metadata = metadata
+                )
+                
+                StepVerifier.create(
+                    extensions.saveWithJsonb(event)
+                        .then(repository.findByEventId(event.eventId))
+                )
+                    .assertNext { found ->
+                        found.metadata?.get("tokens") shouldBe 100
+                        found.metadata?.get("inputTokens") shouldBe 50
+                    }
+                    .verifyComplete()
+            }
+        }
+    }
+}
+```
 
 ## Code Coverage
 
 Current test coverage focuses on:
-- ✅ All domain models
-- ✅ All repository methods
-- ✅ All service methods
-- ✅ All controller endpoints
+- ✅ All domain models (UsageEvent, Tenant, Customer)
+- ✅ All repository methods (with JSONB handling)
+- ✅ All service methods (EventProcessingService, AggregationService)
+- ✅ All controller endpoints (EventController)
 - ✅ All business validation rules
 - ✅ All exception scenarios
+- ✅ JSONB conversion (Map<String, Any> ↔ JSONB)
+
+**Coverage Report:**
+```bash
+# Generate coverage report
+mvn clean test jacoco:report
+
+# View report
+open target/site/jacoco/index.html
+```
 
 ## Best Practices
 
-1. **Real Database:** Never use mocks for database operations
-2. **Testcontainers:** Always use Testcontainers for integration tests
-3. **Shared Container:** Use singleton pattern for PostgreSQL container
-4. **Database Cleanup:** Truncate tables in `@BeforeEach`, not `@AfterEach`
-5. **No @DirtiesContext:** Use `@TestInstance(PER_CLASS)` for performance
-6. **Test Fixtures:** Use builders for test data creation
-7. **Meaningful Names:** Use descriptive test method names
-8. **Independent Tests:** Each test should be independent
+1. **Kotest BDD Style**: Use `DescribeSpec` for all tests
+2. **No Mocks**: Never use mocks for database or Redis operations
+3. **Testcontainers**: Always use Testcontainers for integration tests
+4. **Shared Containers**: Use singleton pattern for PostgreSQL and Redis containers
+5. **Time Consistency**: Always use injected `Clock` bean for time operations
+6. **Sequential Execution**: Tests run in order for multi-step scenarios
+7. **Cleanup Before Class**: Database and Redis cleanup happens before test class (not before each test)
+8. **Reactive Assertions**: Use `StepVerifier` for reactive types (`Mono`/`Flux`)
+9. **Meaningful Names**: Use descriptive test method names (`it("should ...")`)
+10. **Independent Tests**: Each test should be independent (cleanup ensures this)
 
 ## Continuous Integration
 
 Tests run automatically on every push via GitHub Actions:
 
+**Workflow:** `.github/workflows/ci.yml`
+
 ```yaml
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
+    
+    services:
+      docker:
+        image: docker:24-dind
+        options: --privileged
+    
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-java@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          java-version: '25'
-      - run: mvn test
-      - run: mvn verify
-      - uses: codecov/codecov-action@v5
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Run tests with coverage
+        run: mvn clean test jacoco:report
+      
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: rodolfodpk/takehome1
 ```
+
+**Coverage:**
+- Coverage reports are automatically uploaded to Codecov
+- Coverage badge is displayed in README.md
+- Coverage target: 80% (configured in `codecov.yml`)
 
 ## Troubleshooting
 
 **Issue:** Tests are slow
-- **Solution:** Ensure container reuse is enabled in `SharedPostgresContainer`
+- **Solution:** Ensure container reuse is enabled in `SharedTestContainers`
 
 **Issue:** Database state leaks between tests
-- **Solution:** Check that `TRUNCATE ... RESTART IDENTITY CASCADE` runs in `@BeforeEach`
+- **Solution:** Check that cleanup runs in `beforeSpec` (before test class)
 
 **Issue:** Container start fails
 - **Solution:** Ensure Docker is running and has sufficient resources allocated
 
 **Issue:** Port conflicts
-- **Solution:** Verify no other PostgreSQL instance is running on port 5432
+- **Solution:** Testcontainers automatically assigns random ports, but verify no other PostgreSQL/Redis instances are running
+
+**Issue:** Time-dependent tests fail
+- **Solution:** Always use injected `Clock` bean instead of `Instant.now()` or `LocalDateTime.now()`
 
 ## Additional Resources
 
+- [Kotest Documentation](https://kotest.io/)
+- [Kotest Spring Extension](https://kotest.io/docs/framework/extensions/spring.html)
 - [Testcontainers Documentation](https://www.testcontainers.org/)
-- [JUnit 5 User Guide](https://junit.org/junit5/docs/current/user-guide/)
-- [WebTestClient Guide](https://docs.spring.io/spring-framework/reference/testing/webtestclient.html)
-- [DatabaseClient Guide](https://docs.spring.io/spring-framework/reference/data-access/r2dbc.html)
-
+- [StepVerifier Guide](https://projectreactor.io/docs/core/release/reference/#testing)
+- [R2DBC Testing Guide](https://docs.spring.io/spring-data/r2dbc/docs/current/reference/html/#r2dbc.testing)

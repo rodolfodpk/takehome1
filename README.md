@@ -13,7 +13,7 @@ Production-ready API metering and aggregation engine that processes high-volume 
 - **Cache/Distributed State**: Redis 7 (via Redisson)
 - **Resilience**: Resilience4j (Circuit Breaker, Retry, Timeout)
 - **Observability**: Prometheus, Grafana, Spring Boot Actuator
-- **Testing**: JUnit 5, Testcontainers, K6
+- **Testing**: Kotest (BDD style), Testcontainers (PostgreSQL + Redis), K6
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ make test
 - ✅ **Reactive Programming**: Non-blocking architecture with WebFlux/R2DBC
 - ✅ **High Throughput**: Handles 10,000+ events/second per instance
 - ✅ **Distributed State**: Redis-based real-time aggregation with Redisson
-- ✅ **Multi-Tenancy**: AOP-based tenant isolation
+- ✅ **Multi-Tenancy**: Header-based tenant isolation with explicit validation (X-Tenant-Id)
 - ✅ **Batch Aggregation**: 30-second window processing
 - ✅ **Resilience Patterns**: Circuit breakers, retries, timeouts
 - ✅ **Observability**: Structured logging, metrics, dashboards
