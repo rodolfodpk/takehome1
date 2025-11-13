@@ -1,5 +1,8 @@
 # Real-Time API Metering & Aggregation Engine
 
+![CI](https://github.com/rodolfodpk/takehome1/workflows/CI/badge.svg)
+![codecov](https://codecov.io/gh/rodolfodpk/takehome1/branch/main/graph/badge.svg)
+
 Production-ready API metering and aggregation engine that processes high-volume events, maintains distributed state in Redis, and produces accurate aggregations across multiple service instances.
 
 ## Technology Stack
