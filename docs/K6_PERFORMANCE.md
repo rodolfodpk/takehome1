@@ -276,17 +276,38 @@ To monitor system behavior during K6 tests:
 
 K6 tests run against the application with `application-k6.properties` profile, which has:
 
-- **Resilience4j:** Enabled but with relaxed thresholds
-  - Circuit breaker `failureRateThreshold=90%` (from 50%)
-  - Circuit breaker `slidingWindowSize=50` (from 10)
-  - Circuit breaker `minimumNumberOfCalls=20` (from 5)
-  - Timeouts extended to 10s (from 3-5s)
-  - Retries reduced to 1 attempt (from 3)
-  - **Rationale:** Allows circuit breaker testing in spike tests while preventing false positives in load/stress tests
+- **Resilience4j:** Circuit breakers and time limiters DISABLED for pure performance metrics
+  - **Circuit breakers DISABLED** (not configured in k6 profile)
+  - **Time limiters DISABLED** (not configured in k6 profile)
+  - Retries reduced to 1 attempt (from 3) - effectively disabled
+  - **Rationale:** 
+    - Circuit breakers and time limiters disabled to avoid interference with performance metrics
+    - Provides pure performance numbers without resilience overhead
+    - No false positives from circuit breakers opening during load tests
+    - For spike tests that need to validate circuit breaker behavior, use `k6-spike` profile (see below)
 
 - **Logging:** Reduced verbosity (WARN level) for performance testing
 
 - **Metrics:** Tagged with `environment=k6-testing`
+
+### Spike Test with Circuit Breakers
+
+For spike tests that need to validate circuit breaker behavior, use the `k6-spike` profile:
+
+```bash
+# Start multi-instance stack with circuit breakers enabled
+SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi
+
+# Run spike test
+make k6-spike-multi
+```
+
+The `k6-spike` profile extends `k6` and enables circuit breakers with relaxed thresholds:
+- Circuit breaker `failureRateThreshold=90%` (from 50% in production)
+- Circuit breaker `slidingWindowSize=50` (from 10 in production)
+- Circuit breaker `minimumNumberOfCalls=20` (from 5 in production)
+
+This allows spike tests to validate circuit breaker activation while still using relaxed thresholds suitable for load testing.
 
 ## Understanding K6 Terminal Output
 

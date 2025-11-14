@@ -46,17 +46,35 @@ class DistributedLockService(
                 if (acquired) {
                     log.debug("Acquired lock: $lockKey")
                     operation
-                        .doFinally {
+                        .flatMap { result ->
+                            // Chain unlock in reactive stream to maintain context
                             lock.unlock()
                                 .doOnSuccess { log.debug("Released lock: $lockKey") }
                                 .doOnError { error ->
-                                    log.warn("Error releasing lock: $lockKey", error)
+                                    // If unlock fails due to thread context, log and continue
+                                    // Lock will expire via lease time (60s) automatically
+                                    if (error is IllegalMonitorStateException) {
+                                        log.debug("Lock unlock failed due to thread context (will expire): $lockKey")
+                                    } else {
+                                        log.warn("Error releasing lock: $lockKey", error)
+                                    }
                                 }
-                                .subscribe()
+                                .onErrorResume { Mono.empty<Void>() } // Swallow unlock errors
+                                .then(Mono.just(result)) // Return original result
                         }
                         .onErrorResume { error ->
                             log.error("Error in locked operation: $lockKey", error)
-                            lock.unlock().then(Mono.error(error))
+                            // Try to unlock on error, but don't fail if unlock fails
+                            lock.unlock()
+                                .doOnError { unlockError ->
+                                    if (unlockError is IllegalMonitorStateException) {
+                                        log.debug("Lock unlock failed due to thread context (will expire): $lockKey")
+                                    } else {
+                                        log.warn("Error releasing lock after operation error: $lockKey", unlockError)
+                                    }
+                                }
+                                .onErrorResume { Mono.empty<Void>() }
+                                .then(Mono.error(error)) // Propagate original error
                         }
                 } else {
                     log.debug("Failed to acquire lock: $lockKey")

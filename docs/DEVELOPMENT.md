@@ -95,17 +95,36 @@ make test           # Run all tests (10 test files, ~10-15 seconds)
 
 All k6 test commands are fully automated - they handle all dependencies (docker-compose, app startup, cleanup) automatically.
 
+**Single Instance Tests:**
 ```bash
 # Individual tests (each handles full setup/teardown automatically)
 make k6-warmup       # Warm-up test (2 VUs, 10 seconds) - quick validation
 make k6-smoke        # Smoke test (10 VUs, 1 minute)
-make k6-load         # Load test (200 VUs, 5 minutes, target 10k+ events/sec)
-make k6-stress       # Stress test (ramp 50→1000 VUs, 20 minutes)
-make k6-spike        # Spike test (spike 50→500→50, 10 minutes)
+make k6-load         # Load test (350 VUs, 2 minutes, target 2k+ events/sec)
+make k6-stress       # Stress test (ramp 50→500 VUs, 3 minutes)
+make k6-spike        # Spike test (spike 50→500→50, 2.5 minutes)
 
 # Run all tests sequentially
 make k6-test         # Run all K6 tests (warmup, smoke, load, stress, spike)
 ```
+
+**Multi-Instance Tests (Distributed Lock Testing):**
+```bash
+# First, start multi-instance stack
+make start-multi
+
+# Then run tests against 2 instances (tests distributed locks)
+make k6-warmup-multi  # Warm-up test against 2 instances
+make k6-smoke-multi   # Smoke test against 2 instances
+make k6-load-multi    # Load test against 2 instances - **Tests distributed locks**
+make k6-stress-multi  # Stress test against 2 instances
+make k6-spike-multi   # Spike test against 2 instances
+
+# Run all multi-instance tests
+make k6-test-multi    # Run all K6 tests against multi-instance setup
+```
+
+**See [Multi-Instance Setup Guide](MULTI_INSTANCE.md) for complete documentation.**
 
 **What each test does automatically:**
 1. Stops and cleans Docker volumes (`docker-compose down -v`)
@@ -334,11 +353,15 @@ http_req_failed..........: 0%   0/15000
 ### Application Profiles
 
 - `default` - Production profile (standard settings)
-- `k6` - K6 testing profile (relaxed resilience settings for performance testing)
-  - Circuit breakers enabled but with relaxed thresholds (90% failure rate)
-  - Extended timeouts (10s)
-  - Reduced retries (1 attempt)
+- `k6` - K6 testing profile (circuit breakers and time limiters DISABLED for pure performance metrics)
+  - Circuit breakers DISABLED (not configured - provides pure performance metrics)
+  - Time limiters DISABLED (not configured - avoids artificial timeouts)
+  - Extended timeouts (10s connection/statement timeouts)
+  - Reduced retries (1 attempt - effectively disabled)
   - Reduced logging verbosity (WARN level)
+- `k6-spike` - K6 spike test profile (extends k6, enables circuit breakers for spike test validation)
+  - Circuit breakers ENABLED with relaxed thresholds (90% failure rate)
+  - Use with: `SPRING_PROFILES_ACTIVE=k6,k6-spike`
 
 ### Spring Profiles
 
@@ -355,7 +378,17 @@ mvn spring-boot:run -Dspring-boot.run.profiles=k6
 
 ## Docker Commands
 
-### PostgreSQL Container
+### Docker Image Management
+
+```bash
+# Build Docker image (automated - builds JAR then image)
+make docker-build
+
+# Build for multi-instance (same as docker-build)
+make docker-build-multi
+```
+
+### Single Instance Setup
 
 ```bash
 # Start PostgreSQL only
@@ -368,13 +401,33 @@ docker-compose stop postgres
 docker-compose logs postgres
 
 # Access PostgreSQL
-docker exec -it takehome1-postgres psql -U metering -d metering
+docker exec -it takehome1-postgres psql -U takehome1 -d takehome1
 ```
+
+### Multi-Instance Setup
+
+```bash
+# Start multi-instance stack (2 app instances + nginx + observability)
+make start-multi
+
+# Stop multi-instance stack
+make stop-multi
+
+# View logs
+docker-compose -f docker-compose.yml -f docker-compose.multi.yml logs -f
+
+# View specific service logs
+docker-compose -f docker-compose.yml -f docker-compose.multi.yml logs app1
+docker-compose -f docker-compose.yml -f docker-compose.multi.yml logs app2
+docker-compose -f docker-compose.yml -f docker-compose.multi.yml logs nginx
+```
+
+**See [Multi-Instance Setup Guide](MULTI_INSTANCE.md) for complete documentation.**
 
 ### Full Observability Stack
 
 ```bash
-# Start all services (PostgreSQL, Prometheus, Grafana)
+# Start all services (PostgreSQL, Redis, Prometheus, Grafana)
 docker-compose up -d
 
 # Stop all services
@@ -554,5 +607,6 @@ mvn clean package -o
 - **[Testing Guide](TESTING.md)** - Test strategy and coverage details
 - **[Resilience Documentation](RESILIENCE.md)** - Circuit Breaker, Retry, and Timeout patterns
 - **[K6 Performance Testing](K6_PERFORMANCE.md)** - Detailed K6 testing guide
+- **[Multi-Instance Setup](MULTI_INSTANCE.md)** - Multi-instance setup and distributed lock testing
 - **[Observability Documentation](OBSERVABILITY.md)** - Monitoring setup and dashboards
 

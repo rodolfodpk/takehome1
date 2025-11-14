@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface TenantRepository : ReactiveCrudRepository<Tenant, Long> {
-    fun findByActive(active: Boolean): reactor.core.publisher.Flux<Tenant>
+    // No custom methods needed - only used in tests via ReactiveCrudRepository methods (save, findById, etc.)
 }
 

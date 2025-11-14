@@ -53,14 +53,34 @@ resilience4j.timelimiter.instances.devices.timeoutDuration=5s
 
 ### K6 Testing Profile
 
-For performance testing, resilience is relaxed in `application-k6.properties`:
+For performance testing, circuit breakers and time limiters are **DISABLED** in `application-k6.properties`:
 
 ```properties
-# Relaxed settings for performance testing
-resilience4j.circuitbreaker.instances.devices.slidingWindowSize=100
-resilience4j.circuitbreaker.instances.devices.failureRateThreshold=80
-resilience4j.timelimiter.instances.devices.timeoutDuration=30s
+# Circuit breakers DISABLED for k6 performance testing
+# (Not configured - code will skip applying circuit breakers if not configured)
+# Time limiters DISABLED - removed from k6 profile for accurate performance metrics
+# (Time limiters are conditionally applied in code - skipped if not configured)
+resilience4j.retry.instances.postgres.maxAttempts=1  # Effectively disabled
 ```
+
+**Rationale:**
+- Provides pure performance metrics without circuit breaker overhead
+- No false positives from circuit breakers opening during load tests
+- Time limiters disabled to avoid artificial timeouts
+
+### K6 Spike Test Profile
+
+For spike tests that need to validate circuit breaker behavior, use `application-k6-spike.properties`:
+
+```bash
+# Enable circuit breakers for spike tests
+SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi
+```
+
+This profile extends `k6` profile and enables circuit breakers with relaxed thresholds:
+- Circuit breaker `failureRateThreshold=90%`
+- Circuit breaker `slidingWindowSize=50`
+- Circuit breaker `minimumNumberOfCalls=20`
 
 ## Layered Timeout Strategy
 

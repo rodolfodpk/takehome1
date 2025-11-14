@@ -1,0 +1,132 @@
+version: '3.8'
+
+# Multi-instance docker-compose for distributed lock testing
+# This setup runs 2 instances of the app behind nginx load balancer
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.multi.yml up
+
+services:
+  # Load balancer (nginx) - distributes traffic across 2 app instances
+  nginx:
+    image: nginx:alpine
+    container_name: takehome1-nginx
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    # Resource limits for nginx (lightweight, needs minimal resources)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    depends_on:
+      - app1
+      - app2
+    networks:
+      - takehome1-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # First app instance
+  app1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: takehome1-app-1
+    ports:
+      - "8081:8081"  # Exposed for direct access/debugging
+    # Resource limits for fair distribution in performance tests
+    # Each instance gets 1.5 CPU cores and 768MB RAM
+    # This ensures both instances get fair share and prevents resource starvation
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 768M
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    environment:
+      # Use k6 profile by default for multi-instance setup (optimized for load testing)
+      # Override with SPRING_PROFILES_ACTIVE=prod if you need production settings
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-k6}
+      - SPRING_R2DBC_URL=r2dbc:postgresql://postgres:5432/${POSTGRES_DB:-takehome1}
+      - SPRING_R2DBC_USERNAME=${POSTGRES_USER:-takehome1}
+      - SPRING_R2DBC_PASSWORD=${POSTGRES_PASSWORD:-takehome1}
+      - SPRING_FLYWAY_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-takehome1}
+      - SPRING_FLYWAY_USER=${POSTGRES_USER:-takehome1}
+      - SPRING_FLYWAY_PASSWORD=${POSTGRES_PASSWORD:-takehome1}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-takehome1}
+      - SERVER_PORT=8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - takehome1-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Second app instance
+  app2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: takehome1-app-2
+    ports:
+      - "8082:8082"  # Exposed for direct access/debugging
+    # Resource limits for fair distribution in performance tests
+    # Each instance gets 1.5 CPU cores and 768MB RAM
+    # This ensures both instances get fair share and prevents resource starvation
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 768M
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    environment:
+      # Use k6 profile by default for multi-instance setup (optimized for load testing)
+      # Override with SPRING_PROFILES_ACTIVE=prod if you need production settings
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-k6}
+      - SPRING_R2DBC_URL=r2dbc:postgresql://postgres:5432/${POSTGRES_DB:-takehome1}
+      - SPRING_R2DBC_USERNAME=${POSTGRES_USER:-takehome1}
+      - SPRING_R2DBC_PASSWORD=${POSTGRES_PASSWORD:-takehome1}
+      - SPRING_FLYWAY_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-takehome1}
+      - SPRING_FLYWAY_USER=${POSTGRES_USER:-takehome1}
+      - SPRING_FLYWAY_PASSWORD=${POSTGRES_PASSWORD:-takehome1}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-takehome1}
+      - SERVER_PORT=8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - takehome1-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
