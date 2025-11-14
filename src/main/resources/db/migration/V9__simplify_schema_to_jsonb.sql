@@ -11,8 +11,6 @@
 --
 -- Rollback: If needed, can re-add columns and migrate data back (not recommended after deployment)
 
-BEGIN;
-
 -- ============================================================================
 -- 1. usage_events table migration
 -- ============================================================================
@@ -80,6 +78,4 @@ DROP COLUMN IF EXISTS avg_latency_ms;
 
 -- Verify indexes:
 -- \d usage_events  -- Should show idx_usage_events_data_gin
-
-COMMIT;
 
