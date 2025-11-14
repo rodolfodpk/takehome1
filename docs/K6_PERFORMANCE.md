@@ -2,6 +2,8 @@
 
 Comprehensive performance testing suite for the Real-Time API Metering & Aggregation Engine using K6.
 
+**Important:** K6 tests require Docker Compose. All k6 test commands (`make k6-test`, `make k6-warmup`, etc.) automatically handle Docker Compose setup, cleanup, and application startup. Just run the command and everything is handled automatically.
+
 ## Overview
 
 K6 is used to validate system behavior under various load conditions and verify Resilience4j circuit breakers, retries, and timeouts. All tests target the event ingestion API (`POST /api/v1/events`) which handles 10,000+ events/second per instance.
@@ -516,3 +518,10 @@ If any threshold fails, the test will exit with a non-zero status code.
 - [K6 Documentation](https://k6.io/docs/)
 - [K6 Best Practices](https://k6.io/docs/using-k6-browser/best-practices/)
 - [Resilience4j Configuration](https://resilience4j.readme.io/docs/getting-started-3)
+
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[K6 Test Results](K6_TEST_RESULTS.md)** - Latest k6 performance test results
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+- **[Testing Guide](TESTING.md)** - Test strategy and coverage details

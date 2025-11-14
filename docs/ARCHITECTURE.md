@@ -575,3 +575,11 @@ See **[Observability Documentation](OBSERVABILITY.md)** for details.
 3. **Compression**: Compress events in Redis buffer
 4. **Streaming**: Use Kafka for event ingestion (replace Redis buffer)
 5. **Materialized Views**: Pre-aggregate common query patterns
+
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+- **[Testing Guide](TESTING.md)** - Test strategy and coverage details
+- **[Resilience Documentation](RESILIENCE.md)** - Circuit Breaker, Retry, and Timeout patterns
+- **[Observability Documentation](OBSERVABILITY.md)** - Monitoring setup and dashboards

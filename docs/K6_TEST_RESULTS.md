@@ -2,6 +2,11 @@
 
 This file contains the latest results from k6 performance tests. Results are automatically updated after each test run.
 
+**Related Documentation:**
+- **[README](../README.md)** - Project overview and quick start
+- **[K6 Performance Testing](K6_PERFORMANCE.md)** - Comprehensive k6 testing guide
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+
 ## Warm-up Test - 2025-11-13 21:19:52
 
 

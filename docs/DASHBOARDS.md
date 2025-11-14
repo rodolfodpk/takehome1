@@ -233,3 +233,9 @@ To manually refresh:
 2. Click "Save dashboard"
 3. Changes will be persisted
 
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[Observability Documentation](OBSERVABILITY.md)** - Monitoring setup, metrics, and Prometheus configuration
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+

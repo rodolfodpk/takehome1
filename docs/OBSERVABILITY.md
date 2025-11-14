@@ -549,3 +549,10 @@ All metrics are automatically exported to Prometheus format at `/actuator/promet
 - [Micrometer Documentation](https://micrometer.io/docs)
 - [Prometheus Documentation](https://prometheus.io/docs/)
 - [Grafana Documentation](https://grafana.com/docs/)
+
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+- **[Dashboards Documentation](DASHBOARDS.md)** - Grafana dashboard documentation and usage
+- **[Architecture Documentation](ARCHITECTURE.md)** - System architecture and design patterns

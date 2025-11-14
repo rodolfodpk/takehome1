@@ -2,6 +2,8 @@
 
 Comprehensive testing strategy for the Real-Time API Metering & Aggregation Engine using Kotest (BDD style) and Testcontainers.
 
+**Important:** All tests use Testcontainers - **no Docker Compose needed**. Docker must be running, but Testcontainers automatically provides PostgreSQL and Redis containers. Just run `make test` and everything is handled automatically.
+
 ## Test Strategy
 
 The project uses **package-per-layer** architecture with comprehensive unit, integration, and E2E tests:
@@ -509,3 +511,9 @@ jobs:
 - [Testcontainers Documentation](https://www.testcontainers.org/)
 - [StepVerifier Guide](https://projectreactor.io/docs/core/release/reference/#testing)
 - [R2DBC Testing Guide](https://docs.spring.io/spring-data/r2dbc/docs/current/reference/html/#r2dbc.testing)
+
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+- **[K6 Performance Testing](K6_PERFORMANCE.md)** - Performance testing with k6

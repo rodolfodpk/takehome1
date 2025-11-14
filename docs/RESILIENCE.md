@@ -289,3 +289,10 @@ make k6-load
 - [Spring Boot Resilience4j](https://docs.spring.io/spring-boot/docs/current/reference/html/howto.html#howto.resilience4j)
 - [Project Reactor Transformers](https://projectreactor.io/docs/core/release/reference/index.html#transformers)
 
+## Related Documentation
+
+- **[README](../README.md)** - Project overview and quick start
+- **[Architecture Documentation](ARCHITECTURE.md)** - System architecture and design patterns
+- **[Observability Documentation](OBSERVABILITY.md)** - Monitoring setup and metrics
+- **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
+

@@ -15,6 +15,52 @@ Production-ready API metering and aggregation engine that processes high-volume 
 - **Observability**: Prometheus, Grafana, Spring Boot Actuator
 - **Testing**: Kotest (BDD style), Testcontainers (PostgreSQL + Redis), K6
 
+## Quick Start for Developers
+
+Three essential workflows to get started:
+
+### 1. Running Tests
+**No Docker Compose needed** - Tests use Testcontainers which automatically provides PostgreSQL and Redis.
+
+```bash
+make test
+```
+
+This runs all unit and integration tests (~10-15 seconds). Docker must be running, but no Docker Compose setup is required.
+
+### 2. Running the Application
+**Requires Docker Compose** - Starts PostgreSQL and Redis, then runs the Spring Boot application.
+
+```bash
+make start
+```
+
+This automatically:
+- Starts PostgreSQL and Redis via Docker Compose
+- Waits for services to be ready
+- Runs the Spring Boot application
+
+Access the application at http://localhost:8080
+
+### 3. Running All K6 Performance Tests
+**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike).
+
+```bash
+make k6-test
+```
+
+This automatically:
+- Stops and cleans Docker volumes
+- Starts PostgreSQL and Redis
+- Starts the application with k6 profile
+- Cleans database and Redis
+- Runs all k6 tests sequentially
+- Cleans up after completion
+
+**Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+
+For detailed information, see the [Development Guide](docs/DEVELOPMENT.md).
+
 ## Quick Start
 
 ### Prerequisites
@@ -63,6 +109,26 @@ make test
 - ✅ **Resilience Patterns**: Circuit breakers, retries, timeouts
 - ✅ **Observability**: Structured logging, metrics, dashboards
 - ✅ **API Documentation**: Auto-generated Swagger UI
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Getting Started
+- **[Development Guide](docs/DEVELOPMENT.md)** - Complete development guide with all make commands and workflows
+- **[Testing Guide](docs/TESTING.md)** - Test strategy, coverage, and running tests with Testcontainers
+
+### Architecture & Design
+- **[Architecture](docs/ARCHITECTURE.md)** - System architecture, package structure, and design patterns
+- **[Resilience](docs/RESILIENCE.md)** - Circuit Breaker, Retry, and Timeout patterns with Resilience4j
+
+### Operations
+- **[Observability](docs/OBSERVABILITY.md)** - Monitoring setup, metrics, and Prometheus configuration
+- **[Dashboards](docs/DASHBOARDS.md)** - Grafana dashboard documentation and usage
+
+### Performance
+- **[K6 Performance Testing](docs/K6_PERFORMANCE.md)** - Comprehensive k6 testing guide with scenarios and thresholds
+- **[K6 Test Results](docs/K6_TEST_RESULTS.md)** - Latest k6 performance test results
 
 ## Architecture
 

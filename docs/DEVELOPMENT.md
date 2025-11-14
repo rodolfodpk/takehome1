@@ -2,18 +2,52 @@
 
 Complete development guide for the Real-Time API Metering & Aggregation Engine including all make commands and workflows.
 
-## Quick Start
+## Quick Start for Developers
+
+Three essential workflows to get started:
+
+### 1. Running Tests
+**No Docker Compose needed** - Tests use Testcontainers which automatically provides PostgreSQL and Redis.
 
 ```bash
-# Run tests (requires Docker to be running)
 make test
-
-# Start application
-make start
-
-# Access Swagger UI
-open http://localhost:8080/swagger-ui.html
 ```
+
+- Runs all unit and integration tests (~10-15 seconds)
+- Docker must be running, but no Docker Compose setup is required
+- Testcontainers automatically provides PostgreSQL and Redis containers
+- See [Testing Guide](TESTING.md) for details
+
+### 2. Running the Application
+**Requires Docker Compose** - Starts PostgreSQL and Redis, then runs the Spring Boot application.
+
+```bash
+make start
+```
+
+- Automatically starts PostgreSQL and Redis via Docker Compose
+- Waits for services to be ready
+- Runs the Spring Boot application
+- Access at http://localhost:8080
+
+### 3. Running All K6 Performance Tests
+**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike).
+
+```bash
+make k6-test
+```
+
+- Automatically handles all setup and cleanup
+- Stops and cleans Docker volumes
+- Starts PostgreSQL and Redis
+- Starts application with k6 profile
+- Cleans database and Redis
+- Runs all k6 tests sequentially
+- Cleans up after completion
+
+**Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+
+For detailed k6 testing information, see [K6 Performance Testing](K6_PERFORMANCE.md).
 
 ## Make Commands
 
@@ -501,8 +535,9 @@ mvn clean package -DskipTests
 mvn clean package -o
 ```
 
-## Next Steps
+## Related Documentation
 
+- **[README](../README.md)** - Project overview and quick start
 - **[Architecture Documentation](ARCHITECTURE.md)** - Package structure and dependency rules
 - **[Testing Guide](TESTING.md)** - Test strategy and coverage details
 - **[Resilience Documentation](RESILIENCE.md)** - Circuit Breaker, Retry, and Timeout patterns
