@@ -12,30 +12,23 @@ build: ## Build the application
 test: ## Run all tests
 	mvn test
 
-start: ## Start application with Docker Compose (Postgres + Redis)
-	docker-compose up -d postgres redis
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	mvn spring-boot:run
-
-start-obs: ## Start application with full observability stack
+start: ## Start application with full observability stack (Postgres + Redis + Prometheus + Grafana)
 	docker-compose up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 10
 	mvn spring-boot:run
 
-start-k6: ## Start application with K6 testing profile
-	docker-compose up -d postgres redis
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run
+start-obs: ## Alias for 'start' - Start application with full observability stack
+	@make start
 
-start-k6-obs: ## Start with observability stack + K6 profile (for monitoring K6 tests)
-	docker-compose down -v
+start-k6: ## Start application with K6 testing profile and observability stack
 	docker-compose up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 10
 	SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run
+
+start-k6-obs: ## Alias for 'start-k6' - Start with observability stack + K6 profile
+	@make start-k6
 
 stop: ## Stop all Docker containers
 	docker-compose down

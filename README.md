@@ -29,35 +29,41 @@ make test
 This runs all unit and integration tests (~10-15 seconds). Docker must be running, but no Docker Compose setup is required.
 
 ### 2. Running the Application
-**Requires Docker Compose** - Starts PostgreSQL and Redis, then runs the Spring Boot application.
+**Requires Docker Compose** - Starts PostgreSQL, Redis, Prometheus, and Grafana, then runs the Spring Boot application.
 
 ```bash
 make start
 ```
 
 This automatically:
-- Starts PostgreSQL and Redis via Docker Compose
+- Starts PostgreSQL, Redis, Prometheus, and Grafana via Docker Compose
 - Waits for services to be ready
 - Runs the Spring Boot application
 
-Access the application at http://localhost:8080
+Access:
+- **Application**: http://localhost:8080
+- **Grafana**: http://localhost:3000 (admin/admin)
+- **Prometheus**: http://localhost:9090
 
 ### 3. Running All K6 Performance Tests
-**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike).
+**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike) with observability stack.
 
 ```bash
 make k6-test
 ```
 
 This automatically:
-- Stops and cleans Docker volumes
-- Starts PostgreSQL and Redis
+- Starts Prometheus and Grafana (if not already running)
+- Stops and cleans Docker volumes for PostgreSQL and Redis
+- Starts PostgreSQL and Redis with clean data
 - Starts the application with k6 profile
 - Cleans database and Redis
 - Runs all k6 tests sequentially
-- Cleans up after completion
+- Keeps Grafana and Prometheus running for monitoring
 
 **Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+
+**Monitoring:** During k6 tests, you can monitor metrics in Grafana at http://localhost:3000 (admin/admin)
 
 For detailed information, see the [Development Guide](docs/DEVELOPMENT.md).
 
@@ -71,16 +77,14 @@ For detailed information, see the [Development Guide](docs/DEVELOPMENT.md).
 ### Running the Application
 
 ```bash
-# Start application with PostgreSQL and Redis
-docker-compose up -d postgres redis
+# Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana)
 make start
-
-# Start application with observability stack (Prometheus + Grafana)
-make start-obs
 
 # Stop application
 make stop
 ```
+
+**Note:** The observability stack (Prometheus + Grafana) is always started with the application for monitoring.
 
 ### Running Tests
 

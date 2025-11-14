@@ -2,7 +2,7 @@
 
 Comprehensive performance testing suite for the Real-Time API Metering & Aggregation Engine using K6.
 
-**Important:** K6 tests require Docker Compose. All k6 test commands (`make k6-test`, `make k6-warmup`, etc.) automatically handle Docker Compose setup, cleanup, and application startup. Just run the command and everything is handled automatically.
+**Important:** K6 tests require Docker Compose. All k6 test commands (`make k6-test`, `make k6-warmup`, etc.) automatically handle Docker Compose setup, cleanup, and application startup. The observability stack (Prometheus + Grafana) is automatically started if not already running, allowing you to monitor test performance in real-time. Just run the command and everything is handled automatically.
 
 ## Overview
 

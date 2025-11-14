@@ -19,33 +19,41 @@ make test
 - See [Testing Guide](TESTING.md) for details
 
 ### 2. Running the Application
-**Requires Docker Compose** - Starts PostgreSQL and Redis, then runs the Spring Boot application.
+**Requires Docker Compose** - Starts PostgreSQL, Redis, Prometheus, and Grafana, then runs the Spring Boot application.
 
 ```bash
 make start
 ```
 
-- Automatically starts PostgreSQL and Redis via Docker Compose
+- Automatically starts PostgreSQL, Redis, Prometheus, and Grafana via Docker Compose
 - Waits for services to be ready
 - Runs the Spring Boot application
-- Access at http://localhost:8080
+- Access:
+  - **Application**: http://localhost:8080
+  - **Grafana**: http://localhost:3000 (admin/admin)
+  - **Prometheus**: http://localhost:9090
+
+**Note:** The observability stack is always started with the application for monitoring.
 
 ### 3. Running All K6 Performance Tests
-**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike).
+**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike) with observability stack.
 
 ```bash
 make k6-test
 ```
 
 - Automatically handles all setup and cleanup
-- Stops and cleans Docker volumes
-- Starts PostgreSQL and Redis
+- Starts Prometheus and Grafana (if not already running)
+- Stops and cleans Docker volumes for PostgreSQL and Redis
+- Starts PostgreSQL and Redis with clean data
 - Starts application with k6 profile
 - Cleans database and Redis
 - Runs all k6 tests sequentially
-- Cleans up after completion
+- Keeps Grafana and Prometheus running for monitoring
 
 **Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+
+**Monitoring:** During k6 tests, you can monitor metrics in Grafana at http://localhost:3000 (admin/admin)
 
 For detailed k6 testing information, see [K6 Performance Testing](K6_PERFORMANCE.md).
 
@@ -56,14 +64,13 @@ For detailed k6 testing information, see [K6 Performance Testing](K6_PERFORMANCE
 #### Starting the Application
 
 ```bash
-make start          # Start PostgreSQL and the application
-make start-obs      # Start with observability stack (Prometheus + Grafana)
-make start-k6       # Start application with K6 testing profile
-make start-k6-obs   # Start with observability stack + K6 profile (for monitoring K6 tests)
-make start-resilience # Start with resilience-test profile
+make start          # Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana)
+make start-obs      # Alias for 'start' - same as above
+make start-k6       # Start application with K6 testing profile and observability stack
+make start-k6-obs   # Alias for 'start-k6' - same as above
 ```
 
-**Note:** `make start-k6-obs` automatically runs `docker-compose down -v` to clean all volumes before starting, ensuring a fresh database state for K6 performance testing.
+**Note:** The observability stack (Prometheus + Grafana) is always started with the application for monitoring. This allows you to monitor metrics, dashboards, and system health in real-time.
 
 #### Managing the Application
 
@@ -113,17 +120,19 @@ make k6-test         # Run all K6 tests (warmup, smoke, load, stress, spike)
 
 ### Observability
 
+The observability stack (Prometheus + Grafana) is automatically started with the application:
+
 ```bash
-# Start observability stack
-make start-obs      # Start application with Prometheus and Grafana (prod profile)
-make start-k6-obs   # Start with observability stack + K6 profile (for monitoring K6 tests)
-                    # Automatically cleans volumes (docker-compose down -v) for fresh state
+# Start application (includes observability stack)
+make start          # Starts PostgreSQL, Redis, Prometheus, and Grafana
 
 # Access dashboards
-make grafana        # Open Grafana dashboard (http://localhost:3000)
+make grafana        # Open Grafana dashboard (http://localhost:3000, admin/admin)
 make prometheus     # Open Prometheus UI (http://localhost:9090)
 make metrics        # View application metrics
 ```
+
+**Note:** When running k6 tests, the observability stack is automatically started if not already running, allowing you to monitor test performance in real-time.
 
 ### Development Workflow
 
@@ -235,20 +244,23 @@ make stop
 
 ### 4. Observability
 
-Start with observability stack:
+The observability stack is automatically started with the application:
 
 ```bash
-make start-obs
+make start
 
 # Access Grafana
 make grafana
 # Login: admin / admin
+# URL: http://localhost:3000
 
 # Access Prometheus
 make prometheus
+# URL: http://localhost:9090
 
 # View metrics
 make metrics
+# URL: http://localhost:8080/actuator/metrics
 ```
 
 ## K6 Performance Testing
