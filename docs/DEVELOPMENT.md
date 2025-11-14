@@ -59,6 +59,10 @@ For detailed k6 testing information, see [K6 Performance Testing](K6_PERFORMANCE
 
 ## Make Commands
 
+For a complete reference of all make commands, see [Make Commands Reference](MAKE_COMMANDS.md).
+
+This section covers the most commonly used commands for basic workflows:
+
 ### Application Management
 
 #### Starting the Application
