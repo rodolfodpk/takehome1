@@ -4,7 +4,7 @@ Real-Time API Metering & Aggregation Engine - System Architecture
 
 ## Architecture Overview
 
-The application follows a **package-per-layer** architecture pattern optimized for high-throughput reactive processing. The system is designed to handle 10,000+ events/second per instance using a fully reactive stack (WebFlux + R2DBC).
+The application follows a **package-per-layer** architecture pattern optimized for high-throughput reactive processing. The system is designed to handle 2,000+ events/second per instance (tested up to 3,700+ events/second under stress) using a fully reactive stack (WebFlux + R2DBC).
 
 ```
 src/main/kotlin/com/rdpk/metering/
@@ -553,7 +553,7 @@ See **[Observability Documentation](OBSERVABILITY.md)** for details.
 
 ## Performance Characteristics
 
-- **Throughput**: 10,000+ events/second per instance
+- **Throughput**: 2,000+ events/second per instance (tested up to 3,700+ events/second under stress)
 - **Latency**: P99 < 100ms, P50 < 10ms
 - **Processing**: <1ms per event (hot path)
 - **Batching**: 500-1000 events per batch (cold path)

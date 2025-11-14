@@ -106,7 +106,7 @@ make test
 ## Key Features
 
 - ✅ **Reactive Programming**: Non-blocking architecture with WebFlux/R2DBC
-- ✅ **High Throughput**: Handles 10,000+ events/second per instance
+- ✅ **High Throughput**: Handles 2,000+ events/second per instance (tested up to 3,700+ events/second)
 - ✅ **Distributed State**: Redis-based real-time aggregation with Redisson
 - ✅ **Multi-Tenancy**: Request body tenant isolation with explicit validation
 - ✅ **Batch Aggregation**: 30-second window processing
