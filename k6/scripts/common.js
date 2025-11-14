@@ -1,217 +1,214 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 // Base URL for API
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-const API_BASE = `${BASE_URL}/api/v1/devices`;
+const API_BASE = `${BASE_URL}/api/v1/events`;
 
-// Device name and brand pools for realistic testing
-const NAMES = [
-  'Sensor', 'Camera', 'Thermostat', 'Lock', 'Light', 'Doorbell',
-  'Motion', 'Smoke', 'Water', 'Window', 'Garage', 'Blinds'
+// Tenant and Customer mapping based on seeded data
+// Tenant 1 (Acme Corporation): active, has 3 customers
+// Tenant 2 (TechStart Inc): active, has 2 customers
+// Tenant 3 (Global Services Ltd): inactive, avoid in tests
+const TENANT_CUSTOMERS = {
+  '1': ['acme-customer-001', 'acme-customer-002', 'acme-customer-003'],
+  '2': ['techstart-customer-001', 'techstart-customer-002']
+};
+
+// API endpoint pools for realistic testing
+const API_ENDPOINTS = [
+  '/api/completion',
+  '/api/chat',
+  '/api/embedding',
+  '/api/transcription',
+  '/api/translation',
+  '/api/image-generation',
+  '/api/audio',
+  '/api/vision'
 ];
 
-const BRANDS = [
-  'Philips', 'Samsung', 'Honeywell', 'Ring', 'Nest', 'August',
-  'Wyze', 'Eufy', 'TP-Link', 'Arlo', 'Abode', 'SimpliSafe'
+// Model pools for realistic testing
+const MODELS = [
+  'gpt-4',
+  'gpt-4-turbo',
+  'gpt-3.5-turbo',
+  'claude-3-opus',
+  'claude-3-sonnet',
+  'claude-3-haiku',
+  'text-embedding-ada-002',
+  'whisper-1',
+  'dall-e-3'
 ];
 
-// Helper function to create a random device name
-export function randomDeviceName() {
-  return `${NAMES[Math.floor(Math.random() * NAMES.length)]}-${Math.floor(Math.random() * 1000)}`;
+/**
+ * Generate a unique event ID
+ * Uses timestamp + random number for uniqueness
+ */
+export function generateEventId() {
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000000);
+  return `event-${timestamp}-${random}`;
 }
 
-// Helper function to create a random brand
-export function randomBrand() {
-  return BRANDS[Math.floor(Math.random() * BRANDS.length)];
+/**
+ * Get a random tenant ID (only active tenants: "1" or "2")
+ */
+export function randomTenantId() {
+  const tenants = ['1', '2'];
+  return tenants[Math.floor(Math.random() * tenants.length)];
 }
 
-// Helper function to create a new device
-export function createDevice() {
-  const payload = JSON.stringify({
-    name: randomDeviceName(),
-    brand: randomBrand()
-  });
+/**
+ * Get a random customer external_id for the given tenant
+ */
+export function randomCustomerId(tenantId) {
+  const customers = TENANT_CUSTOMERS[tenantId];
+  if (!customers || customers.length === 0) {
+    throw new Error(`No customers found for tenant ${tenantId}`);
+  }
+  return customers[Math.floor(Math.random() * customers.length)];
+}
+
+/**
+ * Get a random API endpoint
+ */
+export function randomApiEndpoint() {
+  return API_ENDPOINTS[Math.floor(Math.random() * API_ENDPOINTS.length)];
+}
+
+/**
+ * Get a random model name
+ */
+export function randomModel() {
+  return MODELS[Math.floor(Math.random() * MODELS.length)];
+}
+
+/**
+ * Generate realistic token counts
+ * Returns { inputTokens, outputTokens, tokens }
+ */
+export function randomTokenCounts() {
+  // Realistic ranges:
+  // Input: 100-10000 tokens
+  // Output: 50-5000 tokens
+  const inputTokens = Math.floor(Math.random() * 9900) + 100;
+  const outputTokens = Math.floor(Math.random() * 4950) + 50;
+  const tokens = inputTokens + outputTokens;
+  return { inputTokens, outputTokens, tokens };
+}
+
+/**
+ * Generate a random latency in milliseconds (50-500ms)
+ */
+export function randomLatencyMs() {
+  return Math.floor(Math.random() * 450) + 50;
+}
+
+/**
+ * Generate ISO-8601 timestamp string
+ * @param {number} offsetMinutes - Optional offset in minutes (negative for past, positive for future)
+ */
+export function generateTimestamp(offsetMinutes = 0) {
+  const now = new Date();
+  if (offsetMinutes !== 0) {
+    now.setMinutes(now.getMinutes() + offsetMinutes);
+  }
+  return now.toISOString();
+}
+
+/**
+ * Generate a complete event payload
+ * @param {Object} options - Optional overrides
+ * @param {string} options.tenantId - Override tenant ID
+ * @param {string} options.customerId - Override customer ID
+ * @param {string} options.apiEndpoint - Override API endpoint
+ * @param {string} options.model - Override model
+ * @param {number} options.inputTokens - Override input tokens
+ * @param {number} options.outputTokens - Override output tokens
+ * @param {number} options.latencyMs - Override latency
+ * @param {number} options.timestampOffsetMinutes - Offset timestamp (negative for past events)
+ */
+export function generateEventPayload(options = {}) {
+  const tenantId = options.tenantId || randomTenantId();
+  const customerId = options.customerId || randomCustomerId(tenantId);
+  const apiEndpoint = options.apiEndpoint || randomApiEndpoint();
+  const model = options.model || randomModel();
+  const tokenCounts = randomTokenCounts();
+  const inputTokens = options.inputTokens !== undefined ? options.inputTokens : tokenCounts.inputTokens;
+  const outputTokens = options.outputTokens !== undefined ? options.outputTokens : tokenCounts.outputTokens;
+  const latencyMs = options.latencyMs !== undefined ? options.latencyMs : randomLatencyMs();
+  const timestamp = generateTimestamp(options.timestampOffsetMinutes);
+  
+  return {
+    eventId: generateEventId(),
+    timestamp: timestamp,
+    tenantId: tenantId,
+    customerId: customerId,
+    apiEndpoint: apiEndpoint,
+    metadata: {
+      inputTokens: inputTokens,
+      outputTokens: outputTokens,
+      tokens: inputTokens + outputTokens,
+      model: model,
+      latencyMs: latencyMs
+    }
+  };
+}
+
+/**
+ * Ingest a single event via POST /api/v1/events
+ * @param {Object} payload - Event payload (from generateEventPayload)
+ * @param {Object} tags - Optional k6 tags for metrics
+ * @returns {Object} Response object
+ */
+export function ingestEvent(payload, tags = {}) {
+  const jsonPayload = JSON.stringify(payload);
   
   const params = {
     headers: { 'Content-Type': 'application/json' },
-    tags: { name: 'CreateDevice' }
+    tags: { name: 'IngestEvent', ...tags }
   };
   
-  const response = http.post(`${API_BASE}`, payload, params);
+  const response = http.post(API_BASE, jsonPayload, params);
+  
+  return response;
+}
+
+/**
+ * Ingest an event with validation checks
+ * @param {Object} payload - Event payload (from generateEventPayload)
+ * @param {Object} tags - Optional k6 tags for metrics
+ * @returns {Object} Response object with validation results
+ */
+export function ingestEventWithValidation(payload, tags = {}) {
+  const response = ingestEvent(payload, tags);
   
   const success = check(response, {
-    'create device status is 201': (r) => r.status === 201,
-    'create device has ID': (r) => {
+    'ingest event status is 201': (r) => r.status === 201,
+    'ingest event has eventId in response': (r) => {
       try {
         const body = JSON.parse(r.body);
-        return body.id !== undefined && body.id !== null;
+        return body.eventId !== undefined && body.eventId === payload.eventId;
+      } catch (e) {
+        return false;
+      }
+    },
+    'ingest event has status in response': (r) => {
+      try {
+        const body = JSON.parse(r.body);
+        return body.status !== undefined && body.status === 'PROCESSED';
+      } catch (e) {
+        return false;
+      }
+    },
+    'ingest event has processedAt in response': (r) => {
+      try {
+        const body = JSON.parse(r.body);
+        return body.processedAt !== undefined;
       } catch (e) {
         return false;
       }
     }
   });
   
-  if (success && response.status === 201) {
-    try {
-      const device = JSON.parse(response.body);
-      return device.id;
-    } catch (e) {
-      return null;
-    }
-  }
-  
-  return null;
+  return { response, success };
 }
-
-// Helper function to get all devices
-export function getAllDevices() {
-  const params = { tags: { name: 'GetAllDevices' } };
-  const response = http.get(`${API_BASE}`, params);
-  
-  check(response, {
-    'get all devices status is 200': (r) => r.status === 200,
-    'get all devices returns array': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return Array.isArray(body);
-      } catch (e) {
-        return false;
-      }
-    }
-  });
-  
-  return response;
-}
-
-// Helper function to get device by ID
-export function getDeviceById(id) {
-  const params = { tags: { name: 'GetDeviceById' } };
-  const response = http.get(`${API_BASE}/${id}`, params);
-  
-  check(response, {
-    'get by ID status is 200': (r) => r.status === 200,
-    'get by ID returns device': (r) => r.status === 200 || r.status === 404
-  });
-  
-  return response;
-}
-
-// Helper function to get devices by brand
-export function getDevicesByBrand(brand) {
-  const params = { 
-    tags: { name: 'GetDevicesByBrand' },
-    params: { brand: brand }
-  };
-  const response = http.get(`${API_BASE}`, params);
-  
-  check(response, {
-    'get by brand status is 200': (r) => r.status === 200,
-    'get by brand returns array': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return Array.isArray(body);
-      } catch (e) {
-        return false;
-      }
-    }
-  });
-  
-  return response;
-}
-
-// Helper function to get devices by state
-export function getDevicesByState(state) {
-  const params = { 
-    tags: { name: 'GetDevicesByState' },
-    params: { state: state }
-  };
-  const response = http.get(`${API_BASE}`, params);
-  
-  check(response, {
-    'get by state status is 200': (r) => r.status === 200,
-    'get by state returns array': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return Array.isArray(body);
-      } catch (e) {
-        return false;
-      }
-    }
-  });
-  
-  return response;
-}
-
-// Helper function to update device
-export function updateDevice(id) {
-  const payload = JSON.stringify({
-    name: randomDeviceName(),
-    brand: randomBrand()
-  });
-  
-  const params = {
-    headers: { 'Content-Type': 'application/json' },
-    tags: { name: 'UpdateDevice' }
-  };
-  
-  const response = http.patch(`${API_BASE}/${id}`, payload, params);
-  
-  check(response, {
-    'update device status is valid': (r) => r.status === 200 || r.status === 400 || r.status === 404,
-    'update device returns device or error': (r) => r.status >= 200 && r.status < 500
-  });
-  
-  return response;
-}
-
-// Helper function to delete device
-export function deleteDevice(id) {
-  const params = { tags: { name: 'DeleteDevice' } };
-  const response = http.del(`${API_BASE}/${id}`, null, params);
-  
-  check(response, {
-    'delete device status is valid': (r) => r.status === 204 || r.status === 400 || r.status === 404
-  });
-  
-  return response;
-}
-
-// Helper function to get a device and return its state
-export function getDeviceState(id) {
-  const response = getDeviceById(id);
-  if (response.status === 200) {
-    try {
-      const device = JSON.parse(response.body);
-      return device.state;
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
-}
-
-// Device states
-const STATES = ['AVAILABLE', 'IN_USE', 'INACTIVE'];
-
-// Helper function to get a random device state
-export function randomDeviceState() {
-  return STATES[Math.floor(Math.random() * STATES.length)];
-}
-
-// Helper function to change device state
-export function changeDeviceState(id, state) {
-  const payload = JSON.stringify({
-    state: state
-  });
-  
-  const params = {
-    headers: { 'Content-Type': 'application/json' },
-    tags: { name: 'ChangeDeviceState' }
-  };
-  
-  const response = http.patch(`${API_BASE}/${id}`, payload, params);
-  
-  return response;
-}
-

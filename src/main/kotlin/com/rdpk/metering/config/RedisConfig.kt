@@ -21,6 +21,12 @@ class RedisConfig {
     @Value("\${spring.data.redis.password:}")
     private var redisPassword: String? = null
 
+    @Value("\${spring.redis.pool.max-size:32}")
+    private var connectionPoolSize: Int = 32
+
+    @Value("\${spring.redis.pool.min-idle-size:8}")
+    private var connectionMinimumIdleSize: Int = 8
+
     @Bean
     @Lazy
     fun redissonClient(): RedissonClient {
@@ -33,8 +39,8 @@ class RedisConfig {
                     setPassword(redisPassword)
                 }
             }
-            .setConnectionPoolSize(64)
-            .setConnectionMinimumIdleSize(24)
+            .setConnectionPoolSize(connectionPoolSize)
+            .setConnectionMinimumIdleSize(connectionMinimumIdleSize)
             .setConnectTimeout(15000) // Increased for Testcontainers
             .setTimeout(15000) // Increased for Testcontainers
             .setRetryAttempts(10) // More retries for Testcontainers

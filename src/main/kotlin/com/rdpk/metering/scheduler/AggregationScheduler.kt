@@ -3,9 +3,9 @@ package com.rdpk.metering.scheduler
 import com.rdpk.metering.config.EventMetrics
 import com.rdpk.metering.config.ResilienceService
 import com.rdpk.metering.domain.AggregationWindow
+import com.rdpk.metering.dto.TenantCustomerPair
 import com.rdpk.metering.repository.AggregationWindowRepository
 import com.rdpk.metering.repository.CustomerRepository
-import com.rdpk.metering.repository.TenantRepository
 import com.rdpk.metering.repository.UsageEventRepository
 import com.rdpk.metering.service.AggregationService
 import com.rdpk.metering.service.DistributedLockService
@@ -30,7 +30,6 @@ import java.time.LocalDateTime
  */
 @Component
 class AggregationScheduler(
-    private val tenantRepository: TenantRepository,
     private val customerRepository: CustomerRepository,
     private val aggregationWindowRepository: AggregationWindowRepository,
     private val usageEventRepository: UsageEventRepository,
@@ -63,39 +62,37 @@ class AggregationScheduler(
         
         log.debug("Processing aggregation window: $windowStart to $windowEnd")
         
-        // Get all active tenants with resilience
+        // Get all active tenants with their customers in a single JOIN query
+        // Optimizes from N+1 queries to 1 query
         resilienceService.applyPostgresResilience(
-            tenantRepository.findByActive(true)
+            customerRepository.findAllActiveTenantsWithCustomers()
         )
-            .flatMap { tenant ->
-                // Get all customers for this tenant with resilience
-                resilienceService.applyPostgresResilience(
-                    customerRepository.findByTenantId(tenant.id!!)
+            .flatMap { pair ->
+                val tenant = pair.toTenant()
+                val customer = pair.toCustomer()
+                
+                // Try to acquire lock for this (tenant, customer, window)
+                val lockKey = "aggregation:lock:${tenant.id}:${customer.id}:${windowStart.epochSecond}"
+                
+                val lockSample = Timer.start()
+                distributedLockService.withLock<Void>(
+                    lockKey = lockKey,
+                    timeout = Duration.ofSeconds(lockTimeoutSeconds),
+                    leaseTime = Duration.ofSeconds(lockLeaseTimeSeconds),
+                    operation = processWindow(tenant.id!!, customer.id!!, windowStart, windowEnd)
                 )
-                    .flatMap { customer ->
-                        // Try to acquire lock for this (tenant, customer, window)
-                        val lockKey = "aggregation:lock:${tenant.id}:${customer.id}:${windowStart.epochSecond}"
-                        
-                        val lockSample = Timer.start()
-                        distributedLockService.withLock<Void>(
-                            lockKey = lockKey,
-                            timeout = Duration.ofSeconds(lockTimeoutSeconds),
-                            leaseTime = Duration.ofSeconds(lockLeaseTimeSeconds),
-                            operation = processWindow(tenant.id!!, customer.id!!, windowStart, windowEnd)
-                        )
-                        .doOnSuccess {
-                            lockSample.stop(eventMetrics.lockAcquisitionLatency)
-                        }
-                        .doOnError { error ->
-                            lockSample.stop(eventMetrics.lockAcquisitionLatency)
-                            eventMetrics.lockContention.increment()
-                            log.error("Error processing window for tenant ${tenant.id}, customer ${customer.id}", error)
-                        }
-                        .onErrorResume { error ->
-                            log.error("Error processing window for tenant ${tenant.id}, customer ${customer.id}", error)
-                            Mono.empty<Void>()
-                        }
-                    }
+                .doOnSuccess {
+                    lockSample.stop(eventMetrics.lockAcquisitionLatency)
+                }
+                .doOnError { error ->
+                    lockSample.stop(eventMetrics.lockAcquisitionLatency)
+                    eventMetrics.lockContention.increment()
+                    log.error("Error processing window for tenant ${tenant.id}, customer ${customer.id}", error)
+                }
+                .onErrorResume { error ->
+                    log.error("Error processing window for tenant ${tenant.id}, customer ${customer.id}", error)
+                    Mono.empty<Void>()
+                }
             }
             .then()
             .subscribe(

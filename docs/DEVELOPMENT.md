@@ -52,31 +52,30 @@ make test           # Run all tests (10 test files, ~10-15 seconds)
 
 #### K6 Performance Testing
 
+All k6 test commands are fully automated - they handle all dependencies (docker-compose, app startup, cleanup) automatically.
+
 ```bash
-# Individual tests
-make k6-smoke       # Smoke test (5 VUs, 1 minute)
-make k6-load        # Load test (50 VUs, 9 minutes)
-make k6-stress      # Stress test (finds breaking point)
-make k6-spike       # Spike test (sudden traffic surge)
-make k6-concurrent  # Concurrent test (race conditions)
-make k6-mixed       # Mixed workload test (realistic simulation)
+# Individual tests (each handles full setup/teardown automatically)
+make k6-warmup       # Warm-up test (2 VUs, 10 seconds) - quick validation
+make k6-smoke        # Smoke test (10 VUs, 1 minute)
+make k6-load         # Load test (200 VUs, 5 minutes, target 10k+ events/sec)
+make k6-stress       # Stress test (ramp 50→1000 VUs, 20 minutes)
+make k6-spike        # Spike test (spike 50→500→50, 10 minutes)
 
-# Automated workflows
-make k6-test              # Run all K6 tests (smoke, load, stress, spike, concurrent, mixed)
-make k6-test-automated    # Automated workflow (reset + smoke + load + cleanup)
-make k6-test-quick        # Quick test (reset + smoke + cleanup)
-
-# Individual test runner
-make k6-test-individual   # Run each test individually with cleanup
-
-# Tests with fresh database
-make k6-test-individual-fresh # Individual tests with fresh database
-make k6-smoke-fresh       # Smoke test with fresh database
-make k6-load-fresh        # Load test with fresh database
-
-# Production simulation
-make k6-production-simulation # Production-like testing sequence
+# Run all tests sequentially
+make k6-test         # Run all K6 tests (warmup, smoke, load, stress, spike)
 ```
+
+**What each test does automatically:**
+1. Stops and cleans Docker volumes (`docker-compose down -v`)
+2. Starts PostgreSQL and Redis
+3. Starts application with k6 profile
+4. Waits for services to be ready
+5. Cleans database and Redis
+6. Runs the test
+7. Cleans up application process
+
+**No manual setup required!** Just run `make k6-smoke` (or any other test) and everything is handled automatically.
 
 ### Observability
 
@@ -160,23 +159,27 @@ Test Categories:
 
 #### K6 Performance Tests
 
-K6 tests require the application to be running:
+K6 tests are fully automated - no manual setup required:
 
 ```bash
-# Start application with K6 profile
-make start-k6
+# Each test handles all dependencies automatically
+make k6-warmup    # Quick validation (10 seconds)
+make k6-smoke     # Basic functionality (1 minute)
+make k6-load      # Production load (5 minutes, 10k+ events/sec)
+make k6-stress    # Find breaking point (20 minutes)
+make k6-spike     # Test circuit breakers (10 minutes)
 
-# In another terminal, run K6 tests
-make k6-smoke    # Quick validation
-make k6-load     # Normal load
-make k6-stress   # Find breaking point
+# Or run all tests sequentially
+make k6-test      # Runs warmup, smoke, load, stress, spike
 ```
 
-Or use automated workflow:
-
-```bash
-make k6-test-automated  # Does everything: reset + start + test + cleanup
-```
+Each test automatically:
+- Stops and cleans Docker volumes
+- Starts PostgreSQL and Redis
+- Starts application with k6 profile
+- Cleans database and Redis
+- Runs the test
+- Cleans up
 
 ### 3. Development Cycle
 
@@ -285,8 +288,11 @@ http_req_failed..........: 0%   0/15000
 ### Application Profiles
 
 - `default` - Production profile (standard settings)
-- `k6` - K6 testing profile (relaxed resilience settings)
-- `resilience-test` - Resilience testing profile (aggressive limits)
+- `k6` - K6 testing profile (relaxed resilience settings for performance testing)
+  - Circuit breakers enabled but with relaxed thresholds (90% failure rate)
+  - Extended timeouts (10s)
+  - Reduced retries (1 attempt)
+  - Reduced logging verbosity (WARN level)
 
 ### Spring Profiles
 

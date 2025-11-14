@@ -57,6 +57,12 @@ class MetricsConfig {
  */
 class EventMetrics(private val meterRegistry: MeterRegistry) {
     
+    // Cache for tenant counters to avoid recreating them
+    private val tenantCounters = mutableMapOf<Long, Counter>()
+    
+    // Cache for customer counters to avoid recreating them
+    private val customerCounters = mutableMapOf<Pair<Long, Long>, Counter>()
+    
     // Event ingestion metrics
     val eventsIngested: Counter = Counter.builder("metering.events.ingested")
         .description("Total number of events ingested")
@@ -64,20 +70,25 @@ class EventMetrics(private val meterRegistry: MeterRegistry) {
         .register(meterRegistry)
     
     fun eventsIngestedByTenant(tenantId: Long): Counter {
-        return Counter.builder("metering.events.ingested")
-            .description("Events ingested per tenant")
-            .tag("type", "by_tenant")
-            .tag("tenant_id", tenantId.toString())
-            .register(meterRegistry)
+        return tenantCounters.getOrPut(tenantId) {
+            Counter.builder("metering.events.ingested")
+                .description("Events ingested per tenant")
+                .tag("type", "by_tenant")
+                .tag("tenant_id", tenantId.toString())
+                .register(meterRegistry)
+        }
     }
     
     fun eventsIngestedByCustomer(tenantId: Long, customerId: Long): Counter {
-        return Counter.builder("metering.events.ingested")
-            .description("Events ingested per customer")
-            .tag("type", "by_customer")
-            .tag("tenant_id", tenantId.toString())
-            .tag("customer_id", customerId.toString())
-            .register(meterRegistry)
+        val key = Pair(tenantId, customerId)
+        return customerCounters.getOrPut(key) {
+            Counter.builder("metering.events.ingested")
+                .description("Events ingested per customer")
+                .tag("type", "by_customer")
+                .tag("tenant_id", tenantId.toString())
+                .tag("customer_id", customerId.toString())
+                .register(meterRegistry)
+        }
     }
     
     val eventsProcessedLatency: Timer = Timer.builder("metering.events.processing.latency")
@@ -120,11 +131,15 @@ class EventMetrics(private val meterRegistry: MeterRegistry) {
         .publishPercentiles(0.5, 0.95, 0.99)
         .register(meterRegistry)
     
-    fun recordBatchSize(batchSize: Int) {
+    // Cache for batch size counter to avoid recreating it
+    private val batchSizeCounter: Counter by lazy {
         Counter.builder("metering.db.persistence.batch.size")
             .description("Number of events persisted per batch")
             .register(meterRegistry)
-            .increment(batchSize.toDouble())
+    }
+    
+    fun recordBatchSize(batchSize: Int) {
+        batchSizeCounter.increment(batchSize.toDouble())
     }
     
     // Aggregation metrics

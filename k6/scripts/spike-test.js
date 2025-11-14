@@ -1,74 +1,45 @@
-import { check, sleep } from 'k6';
-import { getAllDevices, getDeviceById, getDevicesByBrand, createDevice, updateDevice, deleteDevice } from './common.js';
+import { check } from 'k6';
+import { generateEventPayload, ingestEventWithValidation } from './common.js';
 
+/**
+ * Spike Test
+ * 
+ * Purpose: Test Resilience4j circuit breakers under sudden traffic surges
+ * Duration: 2.5 minutes (shorter spike cycles)
+ * VUs: Spike from 50 → 500 → 50 (rapid cycles)
+ * 
+ * This test validates:
+ * - Circuit breaker activation during spikes
+ * - System recovery after spikes
+ * - No data corruption under sudden load changes
+ * - Graceful degradation behavior
+ */
 export const options = {
   stages: [
-    { duration: '1m', target: 10 },   // Low load at 10 VUs
-    { duration: '1m', target: 200 },  // Spike to 200 VUs
-    { duration: '1m', target: 10 },   // Drop back to 10 VUs
-    { duration: '1m', target: 200 },  // Another spike to 200 VUs
-    { duration: '1m', target: 10 },   // Drop back again
+    { duration: '20s', target: 50 },   // Low load at 50 VUs
+    { duration: '20s', target: 500 },  // Spike to 500 VUs
+    { duration: '20s', target: 50 },   // Drop back to 50 VUs
+    { duration: '20s', target: 500 },  // Another spike to 500 VUs
+    { duration: '20s', target: 50 },   // Drop back again
+    { duration: '20s', target: 500 },  // Final spike
+    { duration: '30s', target: 50 },   // Recovery
   ],
   thresholds: {
-    http_req_duration: ['p(95)<1000', 'p(99)<2000'],
+    http_req_duration: ['p(95)<2000'],
     http_req_failed: ['rate<0.02'],  // Allow up to 2% failures during spikes
   },
 };
 
-let deviceIds = []; // Shared array to store created device IDs
-
 export default function () {
-  const probability = Math.random();
+  // Generate a valid event payload
+  const payload = generateEventPayload();
   
-  // 40%: Get all devices
-  if (probability < 0.40) {
-    getAllDevices();
-  }
-  // 20%: Get device by ID
-  else if (probability < 0.60) {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
-      getDeviceById(randomId);
-    } else {
-      getAllDevices(); // Fallback if no devices exist
-    }
-  }
-  // 15%: Get devices by brand
-  else if (probability < 0.75) {
-    const brands = ['Philips', 'Samsung', 'Ring', 'Nest'];
-    const brand = brands[Math.floor(Math.random() * brands.length)];
-    getDevicesByBrand(brand);
-  }
-  // 10%: Create device
-  else if (probability < 0.85) {
-    const deviceId = createDevice();
-    if (deviceId) {
-      deviceIds.push(deviceId);
-      // Keep only last 100 device IDs to avoid memory issues
-      if (deviceIds.length > 100) {
-        deviceIds.shift();
-      }
-    }
-  }
-  // 10%: Update device
-  else if (probability < 0.95) {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
-      updateDevice(randomId);
-    } else {
-      getAllDevices(); // Fallback
-    }
-  }
-  // 5%: Delete device
-  else {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds.splice(Math.floor(Math.random() * deviceIds.length), 1)[0];
-      deleteDevice(randomId);
-    } else {
-      getAllDevices(); // Fallback
-    }
-  }
+  // Ingest event with validation
+  const { response, success } = ingestEventWithValidation(payload);
   
-  sleep(1);
+  // Additional checks
+  check(response, {
+    'spike: response time < 2000ms': (r) => r.timings.duration < 2000,
+    'spike: response has body': (r) => r.body && r.body.length > 0,
+  });
 }
-

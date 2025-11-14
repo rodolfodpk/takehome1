@@ -65,22 +65,29 @@ class RedisEventStorageService(
     /**
      * Get batch of pending events from Redis (cold path)
      * Used by background job to batch persist to Postgres
+     * Optimized: Uses LRANGE to get all events in a single Redis call
      */
     fun getPendingEvents(batchSize: Int): Mono<List<UsageEvent>> {
         val list = redissonReactive.getList<String>(EVENTS_LIST_KEY)
         val sample = Timer.start()
         
         return resilienceService.applyRedisResilience(
-            Flux.range(0, batchSize)
-                .flatMap { index ->
-                    list.get(index)
-                        .onErrorResume { Mono.empty() }
-                }
-                .take(batchSize.toLong())
-                .map { json: String ->
-                    objectMapper.readValue(json, UsageEvent::class.java)
+            // Use range() to get all events in a single LRANGE call (optimized from N calls to 1)
+            // range() returns Mono<List<String>>, so we flatMap to process each element
+            list.range(0, batchSize - 1)
+                .flatMapMany { jsonList: List<String> ->
+                    Flux.fromIterable(jsonList)
+                        .mapNotNull { json: String ->
+                            try {
+                                objectMapper.readValue(json, UsageEvent::class.java)
+                            } catch (e: Exception) {
+                                log.warn("Error deserializing event JSON: $json", e)
+                                null
+                            }
+                        }
                 }
                 .collectList()
+                .map { it.filterNotNull() }
         )
             .doOnSuccess {
                 sample.stop(eventMetrics.redisReadLatency)
@@ -91,38 +98,39 @@ class RedisEventStorageService(
             }
             .onErrorResume { error: Throwable ->
                 log.error("Error reading events from Redis", error)
-                Mono.just(emptyList())
+                Mono.just<List<UsageEvent>>(emptyList())
             }
     }
     
     /**
      * Remove processed events from Redis
      * Used after successful batch persistence to Postgres
-     * Note: Uses LPOP to remove from left (FIFO) - events are processed in order
-     * In production, consider using Redis Sorted Set with scores for better performance
+     * Since we read events with range(0, batchSize-1), we remove them by value (FIFO)
+     * Note: This still makes N calls, but it's simpler and more reliable than trying to use removeAt
+     * Future optimization: Use Lua script for atomic batch removal
      */
     fun removeEvents(events: List<UsageEvent>): Mono<Void> {
         return if (events.isEmpty()) {
             Mono.empty()
         } else {
             val list = redissonReactive.getList<String>(EVENTS_LIST_KEY)
-            val eventIds = events.map { it.eventId }.toSet()
             
-            // Serialize events to JSON for comparison
-            val eventJsonSet = events.mapNotNull { event ->
+            // Serialize events to JSON for removal
+            val eventJsonList = events.mapNotNull { event ->
                 try {
                     objectMapper.writeValueAsString(event)
                 } catch (e: Exception) {
                     log.warn("Error serializing event for removal: ${event.eventId}", e)
                     null
                 }
-            }.toSet()
+            }
             
-            // Remove matching JSON strings from list
+            // Remove matching JSON strings from list (FIFO - first match is removed)
             resilienceService.applyRedisResilience(
-                Flux.fromIterable(eventJsonSet)
+                Flux.fromIterable(eventJsonList)
                     .flatMap { json ->
                         list.remove(json)
+                            .onErrorResume { Mono.just(false) } // Ignore errors
                     }
                     .then()
             )

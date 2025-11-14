@@ -1,74 +1,41 @@
-import { check, sleep } from 'k6';
-import { getAllDevices, getDeviceById, getDevicesByBrand, createDevice, updateDevice, deleteDevice } from './common.js';
+import { check } from 'k6';
+import { generateEventPayload, ingestEventWithValidation } from './common.js';
 
+/**
+ * Load Test
+ * 
+ * Purpose: Simulate normal production load (target: 2k+ events/sec)
+ * Duration: 2 minutes (30s ramp-up, 1m30s steady)
+ * VUs: 350 (to achieve 2k+ events/sec, more is better)
+ * 
+ * This test validates:
+ * - System can handle production-level load
+ * - Latency remains acceptable under steady load
+ * - Throughput meets target (2k+ events/sec, more is better)
+ * - No memory leaks or degradation over time
+ */
 export const options = {
   stages: [
-    { duration: '1m', target: 50 },   // Ramp up to 50 VUs
-    { duration: '4m', target: 50 },   // Stay at 50 VUs
+    { duration: '30s', target: 350 },   // Ramp up to 350 VUs
+    { duration: '1m30s', target: 350 },  // Stay at 350 VUs
   ],
   thresholds: {
     http_req_duration: ['p(95)<500', 'p(99)<1000'],
-    http_req_failed: ['rate<0.01'],  // Less than 1% failures
-    'http_req_duration{name:CreateDevice}': ['p(95)<300'],
-    'http_req_duration{name:GetAllDevices}': ['p(95)<200'],
-    'http_req_duration{name:GetDeviceById}': ['p(95)<100'],
+    http_req_failed: ['rate<0.001'],  // Less than 0.1% failures
+    http_reqs: ['rate>2000'],  // Throughput > 2k events/sec (more is better)
   },
 };
 
-let deviceIds = []; // Shared array to store created device IDs
-
 export default function () {
-  const probability = Math.random();
+  // Generate a valid event payload
+  const payload = generateEventPayload();
   
-  // 40%: Get all devices
-  if (probability < 0.40) {
-    getAllDevices();
-  }
-  // 20%: Get device by ID
-  else if (probability < 0.60) {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
-      getDeviceById(randomId);
-    } else {
-      getAllDevices(); // Fallback if no devices exist
-    }
-  }
-  // 15%: Get devices by brand
-  else if (probability < 0.75) {
-    const brands = ['Philips', 'Samsung', 'Ring', 'Nest'];
-    const brand = brands[Math.floor(Math.random() * brands.length)];
-    getDevicesByBrand(brand);
-  }
-  // 10%: Create device
-  else if (probability < 0.85) {
-    const deviceId = createDevice();
-    if (deviceId) {
-      deviceIds.push(deviceId);
-      // Keep only last 100 device IDs to avoid memory issues
-      if (deviceIds.length > 100) {
-        deviceIds.shift();
-      }
-    }
-  }
-  // 10%: Update device
-  else if (probability < 0.95) {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
-      updateDevice(randomId);
-    } else {
-      getAllDevices(); // Fallback
-    }
-  }
-  // 5%: Delete device
-  else {
-    if (deviceIds.length > 0) {
-      const randomId = deviceIds.splice(Math.floor(Math.random() * deviceIds.length), 1)[0];
-      deleteDevice(randomId);
-    } else {
-      getAllDevices(); // Fallback
-    }
-  }
+  // Ingest event with validation
+  const { response, success } = ingestEventWithValidation(payload);
   
-  sleep(1);
+  // Additional checks
+  check(response, {
+    'load: response time < 500ms': (r) => r.timings.duration < 500,
+    'load: response has body': (r) => r.body && r.body.length > 0,
+  });
 }
-

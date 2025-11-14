@@ -7,8 +7,8 @@ import com.rdpk.metering.dto.UsageEventRequest
 import com.rdpk.metering.dto.UsageEventResponse
 import com.rdpk.metering.config.EventMetrics
 import com.rdpk.metering.config.ResilienceService
+import com.rdpk.metering.dto.ValidationResult
 import com.rdpk.metering.repository.CustomerRepository
-import com.rdpk.metering.repository.TenantRepository
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -24,7 +24,6 @@ import java.time.LocalDateTime
  */
 @Service
 class EventProcessingService(
-    private val tenantRepository: TenantRepository,
     private val customerRepository: CustomerRepository,
     private val redisEventStorageService: RedisEventStorageService,
     private val redisStateService: RedisStateService,
@@ -45,11 +44,10 @@ class EventProcessingService(
     fun processEvent(request: UsageEventRequest): Mono<UsageEventResponse> {
         val sample = Timer.start()
         
-        return validateTenant(request.tenantId)
-            .flatMap { tenant ->
-                validateCustomer(tenant.id!!, request.customerId)
-            }
-            .flatMap { customer ->
+        return validateTenantAndCustomer(request.tenantId, request.customerId)
+            .flatMap { validationResult ->
+                val tenant = validationResult.toTenant()
+                val customer = validationResult.toCustomer()
                 // Convert request to domain entity
                 val event = toUsageEvent(request, customer.id!!)
                 
@@ -86,24 +84,18 @@ class EventProcessingService(
             }
     }
     
-    private fun validateTenant(tenantId: String): Mono<com.rdpk.metering.domain.Tenant> {
+    /**
+     * Validate tenant and customer in a single JOIN query
+     * Optimizes hot path: reduces from 2 DB queries to 1
+     */
+    private fun validateTenantAndCustomer(tenantId: String, customerId: String): Mono<ValidationResult> {
+        val tenantIdLong = tenantId.toLongOrNull() 
+            ?: return Mono.error(IllegalArgumentException("Invalid tenantId: $tenantId"))
+        
         return resilienceService.applyPostgresResilience(
-            tenantRepository.findById(tenantId.toLongOrNull() ?: -1L)
+            customerRepository.findCustomerWithActiveTenant(tenantIdLong, customerId)
                 .switchIfEmpty(
-                    Mono.error(IllegalArgumentException("Tenant not found: $tenantId"))
-                )
-                .filter { it.active }
-                .switchIfEmpty(
-                    Mono.error(IllegalArgumentException("Tenant is not active: $tenantId"))
-                )
-        )
-    }
-    
-    private fun validateCustomer(tenantId: Long, customerId: String): Mono<com.rdpk.metering.domain.Customer> {
-        return resilienceService.applyPostgresResilience(
-            customerRepository.findByTenantIdAndExternalId(tenantId, customerId)
-                .switchIfEmpty(
-                    Mono.error(IllegalArgumentException("Customer not found: $customerId for tenant: $tenantId"))
+                    Mono.error(IllegalArgumentException("Customer not found: $customerId for tenant: $tenantId, or tenant is not active"))
                 )
         )
     }

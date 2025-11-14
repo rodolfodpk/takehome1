@@ -1,11 +1,23 @@
 import { check } from 'k6';
-import http from 'k6/http';
-import { getAllDevices, getDeviceById, getDevicesByBrand, getDevicesByState } from './common.js';
+import { generateEventPayload, ingestEventWithValidation } from './common.js';
 
+/**
+ * Smoke Test
+ * 
+ * Purpose: Validate basic functionality with minimal load
+ * Duration: 1 minute (30s ramp-up, 30s steady)
+ * VUs: 10
+ * 
+ * This test validates:
+ * - Basic event ingestion works correctly
+ * - Response structure is correct
+ * - System handles steady low load
+ * - Latency is acceptable under minimal load
+ */
 export const options = {
   stages: [
-    { duration: '30s', target: 5 },  // Ramp up to 5 VUs
-    { duration: '30s', target: 5 },  // Stay at 5 VUs
+    { duration: '30s', target: 10 },  // Ramp up to 10 VUs
+    { duration: '30s', target: 10 },  // Stay at 10 VUs
   ],
   thresholds: {
     http_req_duration: ['p(95)<200', 'p(99)<500'],
@@ -14,23 +26,15 @@ export const options = {
 };
 
 export default function () {
-  // Read-only operations only
+  // Generate a valid event payload
+  const payload = generateEventPayload();
   
-  // 50%: Get all devices
-  if (Math.random() < 0.5) {
-    getAllDevices();
-  } 
-  // 25%: Get devices by brand
-  else if (Math.random() < 0.75) {
-    const brands = ['Philips', 'Samsung', 'Ring', 'Nest'];
-    const brand = brands[Math.floor(Math.random() * brands.length)];
-    getDevicesByBrand(brand);
-  }
-  // 25%: Get devices by state
-  else {
-    const states = ['AVAILABLE', 'IN_USE', 'INACTIVE'];
-    const state = states[Math.floor(Math.random() * states.length)];
-    getDevicesByState(state);
-  }
+  // Ingest event with validation
+  const { response, success } = ingestEventWithValidation(payload);
+  
+  // Additional checks
+  check(response, {
+    'smoke: response time < 200ms': (r) => r.timings.duration < 200,
+    'smoke: response has body': (r) => r.body && r.body.length > 0,
+  });
 }
-

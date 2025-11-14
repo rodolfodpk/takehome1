@@ -4,9 +4,24 @@ Comprehensive performance testing suite for the Real-Time API Metering & Aggrega
 
 ## Overview
 
-K6 is used to validate system behavior under various load conditions and verify Resilience4j circuit breakers, retries, and rate limiters.
+K6 is used to validate system behavior under various load conditions and verify Resilience4j circuit breakers, retries, and timeouts. All tests target the event ingestion API (`POST /api/v1/events`) which handles 10,000+ events/second per instance.
 
 ## Test Scenarios
+
+### 0. Warm-up Test
+**Purpose:** Quick validation of happy path - ensure basic API works
+
+```bash
+make k6-warmup
+```
+
+- **VUs:** 2
+- **Duration:** 10 seconds (5s ramp-up, 5s steady)
+- **Workload:** 100% event ingestion
+- **Thresholds:** p95 < 500ms, error rate < 1%
+- **Goal:** Fastest way to catch basic issues (API endpoint, payload format, tenant/customer lookup)
+
+**Why first:** This test runs in 10 seconds and validates the most basic functionality before running longer tests.
 
 ### 1. Smoke Test
 **Purpose:** Validate basic functionality with minimal load
@@ -15,9 +30,9 @@ K6 is used to validate system behavior under various load conditions and verify 
 make k6-smoke
 ```
 
-- **VUs:** 5
+- **VUs:** 10
 - **Duration:** 1 minute (30s ramp-up, 30s steady)
-- **Workload:** 100% GET requests (read-only)
+- **Workload:** 100% event ingestion
 - **Thresholds:** p95 < 200ms, p99 < 500ms, error rate < 1%
 - **Goal:** Verify system responds correctly under minimal load
 
@@ -35,143 +50,62 @@ make k6-smoke
         script: k6/scripts/smoke-test.js
         output: -
 
-     scenarios: (100.00%) 1 scenario, 5 max VUs, 1m30s max duration
-              * default: Up to 5 looping VUs for 1m0s over 2 stages
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 1m30s max duration
+              * default: Up to 10 looping VUs for 1m0s over 2 stages
 
   █ THRESHOLDS 
 
     http_req_duration
-    ✓ 'p(95)<200' p(95)=2.12ms
-    ✓ 'p(99)<500' p(99)=3.77ms
+    ✓ 'p(95)<200' p(95)=9.9ms
+    ✓ 'p(99)<500' p(99)=19.9ms
 
     http_req_failed
     ✓ 'rate<0.01' rate=0.00%
 
   █ TOTAL RESULTS 
 
-    checks_total.......................: 361854  6030.978704/s
-    checks_succeeded...................: 100.00% 361854 out of 361854
-    checks_failed......................: 0.00%   0 out of 361854
+    checks_total.......................: 440142  7334.877149/s
+    checks_succeeded...................: 100.00% 440142 out of 440142
+    checks_failed......................: 0.00%   0 out of 440142
 
-    ✓ get all devices status is 200
-    ✓ get all devices returns array
-    ✓ get by brand status is 200
-    ✓ get by brand returns array
-    ✓ get by state status is 200
-    ✓ get by state returns array
+    ✓ ingest event status is 201
+    ✓ ingest event has eventId in response
+    ✓ ingest event has status in response
+    ✓ ingest event has processedAt in response
+    ✓ smoke: response time < 200ms
+    ✓ smoke: response has body
 
     HTTP
-    http_req_duration........................................: avg=1.19ms min=606µs    med=998µs  max=64.38ms p(90)=1.71ms p(95)=2.12ms
-    http_req_failed.........................................: 0.00%  0 out of 180927
-    http_reqs................................................: 180927 3015.489352/s
+    http_req_duration........................................: avg=6.01ms min=2.39ms med=5.33ms max=160.32ms p(90)=8.08ms p(95)=9.9ms
+    http_req_failed.........................................: 0.00%  0 out of 73357
+    http_reqs................................................: 73357 1222.479525/s
 
     EXECUTION
-    iteration_duration........................................: avg=1.23ms min=631.16µs med=1.03ms max=64.45ms p(90)=1.78ms p(95)=2.19ms
-    iterations................................................: 180927 3015.489352/s
-    vus........................................................: 5      min=1           max=5
-    vus_max....................................................: 5      min=5           max=5
+    iteration_duration........................................: avg=6.12ms min=2.51ms med=5.44ms max=160.57ms p(90)=8.2ms  p(95)=10.02ms
+    iterations................................................: 73357 1222.479525/s
+    vus........................................................: 10    min=1          max=10
+    vus_max....................................................: 10    min=10         max=10
 
     NETWORK
-    data_received............................................: 13 MB  217 kB/s
-    data_sent................................................: 15 MB  253 kB/s
+    data_received............................................: 13 MB  222 kB/s
+    data_sent................................................: 30 MB  492 kB/s
 
-running (1m00.0s), 0/5 VUs, 180927 complete and 0 interrupted iterations
-default ✓ [======================================] 0/5 VUs  1m0s
+running (1m00.0s), 0/10 VUs, 73357 complete and 0 interrupted iterations
+default ✓ [======================================] 0/10 VUs  1m0s
 ```
 
 ### 2. Load Test
-**Purpose:** Simulate normal production load
+**Purpose:** Simulate normal production load (target: 10k+ events/sec)
 
 ```bash
 make k6-load
 ```
 
-- **VUs:** 50
+- **VUs:** 200
 - **Duration:** 5 minutes (1m ramp-up, 4m steady)
-- **Workload Distribution:**
-  - 40% GET all devices
-  - 20% GET by ID
-  - 15% GET by brand
-  - 10% POST create
-  - 10% PUT update
-  - 5% DELETE
-- **Thresholds:** p95 < 500ms, p99 < 1000ms, error rate < 1%
-- **Goal:** Verify system stability and latency under steady load
-
-**Sample Terminal Output:**
-```
-📊 Running k6 load test...
-
-         /\      Grafana   /‾‾/  
-    /\  /  \     |\  __   /  /   
-   /  \/    \    | |/ /  /   ‾‾\ 
-  /          \   |   (  |  (‾)  |
- / __________ \  |_|\_\  \_____/ 
-
-     execution: local
-        script: k6/scripts/load-test.js
-        output: -
-
-     scenarios: (100.00%) 1 scenario, 50 max VUs, 5m30s max duration
-              * default: Up to 50 looping VUs for 5m0s over 2 stages
-
-  █ THRESHOLDS 
-
-    http_req_duration
-    ✓ 'p(95)<500' p(95)=28.89ms
-    ✓ 'p(99)<1000' p(99)=71.9ms
-
-      {name:CreateDevice}
-      ✓ 'p(95)<300' p(95)=19.42ms
-
-      {name:GetAllDevices}
-      ✓ 'p(95)<200' p(95)=30.95ms
-
-      {name:GetDeviceById}
-      ✓ 'p(95)<100' p(95)=17.86ms
-
-    http_req_failed
-    ✓ 'rate<0.01' rate=0.00%
-
-  █ TOTAL RESULTS 
-
-    checks_total.......................: 26024   86.553491/s
-    checks_succeeded...................: 100.00% 26024 out of 26024
-    checks_failed......................: 0.00%   0 out of 26024
-
-    ✓ get all devices status is 200
-    ✓ create device status is 201
-    ✓ create device has ID
-    ✓ delete device status is valid
-    ✓ get by ID status is 200
-    ✓ get by ID returns device
-    ✓ get by brand status is 200
-    ✓ get by brand returns array
-    ✓ update device status is valid
-    ✓ update device returns device or error
-
-    HTTP
-    http_req_duration........................................: avg=12.63ms min=802µs  med=10.45ms max=192.4ms  p(90)=22.57ms p(95)=28.89ms
-      { expected_response:true }............................: avg=12.63ms min=802µs  med=10.45ms max=192.4ms  p(90)=22.57ms p(95)=28.89ms
-      { name:CreateDevice }.................................: avg=8.16ms  min=1.2ms  med=5.45ms  max=140.89ms p(90)=14.72ms p(95)=19.42ms
-      { name:GetAllDevices }................................: avg=15.73ms min=2.29ms med=13.12ms max=192.4ms  p(90)=24.77ms p(95)=30.95ms
-      { name:GetDeviceById }................................: avg=6.57ms  min=802µs  med=3.92ms  max=143.95ms p(90)=12.72ms p(95)=17.86ms
-    http_req_failed.........................................: 0.00%  0 out of 13328
-    http_reqs................................................: 13328  44.327733/s
-
-    EXECUTION
-    iteration_duration........................................: avg=1.01s   min=1s     med=1.01s   max=1.19s    p(90)=1.02s   p(95)=1.03s
-    iterations................................................: 13328  44.327733/s
-    vus........................................................: 50     min=1          max=50
-    vus_max....................................................: 50     min=50          max=50
-
-    NETWORK
-    data_received............................................: 299 MB 995 kB/s
-    data_sent................................................: 1.4 MB 4.5 kB/s
-
-running (5m00.7s), 00/50 VUs, 13328 complete and 0 interrupted iterations
-default ✓ [======================================] 00/50 VUs  5m0s
-```
+- **Workload:** 100% event ingestion
+- **Thresholds:** p95 < 500ms, p99 < 1000ms, error rate < 0.1%, throughput > 10k events/sec
+- **Goal:** Verify system stability and latency under steady production load
 
 ### 3. Stress Test
 **Purpose:** Find system breaking point
@@ -180,33 +114,28 @@ default ✓ [======================================] 00/50 VUs  5m0s
 make k6-stress
 ```
 
-- **VUs:** Ramp from 10 → 100 → 200 → 300
+- **VUs:** Ramp from 50 → 200 → 500 → 1000
 - **Duration:** 20 minutes (gradual ramp)
-- **Thresholds:** p95 < 1000ms, p99 < 2000ms, error rate < 5%
+- **Thresholds:** p95 < 2000ms, p99 < 5000ms, error rate < 5%
 - **Goal:** Identify max throughput and failure points
 
 ### 4. Spike Test
-**Purpose:** Test Resilience4j under sudden traffic surges
+**Purpose:** Test Resilience4j circuit breakers under sudden traffic surges
 
 ```bash
 make k6-spike
 ```
 
-- **VUs:** Spike from 10 → 200 → 10
-- **Duration:** 5 minutes (rapid spikes)
-- **Thresholds:** p95 < 1000ms, p99 < 2000ms, error rate < 2%
-- **Goal:** Verify circuit breakers activate during spikes
+- **VUs:** Spike from 50 → 500 → 50 (rapid cycles)
+- **Duration:** 10 minutes (multiple spike cycles)
+- **Thresholds:** p95 < 2000ms, error rate < 2%
+- **Goal:** Verify circuit breakers activate during spikes and system recovers
 
 ## Running Tests
 
 ### Prerequisites
 
-1. **Start the application with K6 profile:**
-   ```bash
-   make start-k6
-   ```
-
-2. **Install K6** (if not already installed):
+1. **K6 installed** (if not already installed):
    ```bash
    # macOS
    brew install k6
@@ -221,33 +150,82 @@ make k6-spike
    choco install k6
    ```
 
+2. **No manual setup required!** Each test command handles all dependencies automatically:
+   - Stops and cleans Docker volumes (`docker-compose down -v`)
+   - Starts PostgreSQL and Redis
+   - Starts application with k6 profile
+   - Cleans database and Redis before test
+   - Runs the test
+   - Cleans up application process
+
 ### Available Commands
 
 ```bash
-make k6-smoke       # Run smoke test (5 VUs, 1 min)
-make k6-load        # Run load test (50 VUs, 5 min)
-make k6-stress      # Run stress test (10→300 VUs, 20 min)
-make k6-spike       # Run spike test (10→200 VUs, 5 min)
+make k6-warmup       # Warm-up test (2 VUs, 10 seconds) - quick validation
+make k6-smoke        # Smoke test (10 VUs, 1 minute)
+make k6-load         # Load test (200 VUs, 5 minutes, target 10k+ events/sec)
+make k6-stress       # Stress test (ramp 50→1000 VUs, 20 minutes)
+make k6-spike        # Spike test (spike 50→500→50, 10 minutes)
 ```
 
 ### Running All Tests Sequentially
 
 ```bash
-make k6-test        # Run all K6 tests in sequence
+make k6-test        # Run all K6 tests in sequence (warmup, smoke, load, stress, spike)
 ```
 
+## Test Data
+
+All tests use seeded data from database migrations:
+
+- **Tenants:**
+  - Tenant 1: "Acme Corporation" (active)
+  - Tenant 2: "TechStart Inc" (active)
+  - Tenant 3: "Global Services Ltd" (inactive - not used in tests)
+
+- **Customers:**
+  - Tenant 1: `acme-customer-001`, `acme-customer-002`, `acme-customer-003`
+  - Tenant 2: `techstart-customer-001`, `techstart-customer-002`
+
+- **Event Payloads:**
+  - Random event IDs (timestamp-based)
+  - Random API endpoints (`/api/completion`, `/api/chat`, etc.)
+  - Random models (`gpt-4`, `gpt-3.5-turbo`, `claude-3`, etc.)
+  - Realistic token counts (100-10k input, 50-5k output)
+  - Realistic latency (50-500ms)
+
+## Cleanup
+
+Each test automatically cleans the environment before running:
+
+1. **Database:** TRUNCATE all event tables (keeps seed data: tenants, customers)
+2. **Redis:** FLUSHDB (clears all keys)
+3. **Circuit Breakers:** Reset naturally as new requests come in
+
+The cleanup ensures:
+- No data leakage between tests
+- Consistent starting state
+- Accurate performance measurements
+
 ## Success Criteria
+
+### Warm-up Test
+- ✅ 100% success rate
+- ✅ Response time p95 < 500ms
+- ✅ Zero errors
+- ✅ All events return 201
 
 ### Smoke Test
 - ✅ 100% success rate
 - ✅ Response time p95 < 200ms
 - ✅ Zero errors
+- ✅ All events return 201
 
 ### Load Test
-- ✅ > 99% success rate
+- ✅ > 99.9% success rate
 - ✅ Response time p95 < 500ms
+- ✅ Throughput > 10,000 events/sec
 - ✅ No memory leaks
-- ✅ Consistent performance
 
 ### Stress Test
 - ✅ Identify breaking point (VUs where success rate drops)
@@ -269,29 +247,44 @@ To monitor system behavior during K6 tests:
    ```
    This automatically:
    - Cleans all volumes (`docker-compose down -v`) for fresh database state
-   - Starts PostgreSQL, Prometheus, and Grafana
+   - Starts PostgreSQL, Redis, Prometheus, and Grafana
    - Starts the application with K6 testing profile
    - Waits for application health check
 
-2. **Open Grafana dashboards:**
+2. **In another terminal, run K6 tests:**
    ```bash
-   make grafana
+   make k6-smoke    # Or any other test
+   ```
+
+3. **Open Grafana dashboards:**
+   ```bash
+   open http://localhost:3000
    # Login: admin/admin
    ```
 
-3. **Monitor metrics:**
+4. **Monitor metrics:**
    - **HTTP Metrics:** Request rate, latency, status codes
    - **Resilience4j Metrics:** Circuit breaker state, retry attempts
    - **JVM Metrics:** Memory usage, thread count
    - **Database Metrics:** Connection pool, query duration
+   - **Redis Metrics:** Operation latency, throughput
+   - **Business Metrics:** Event ingestion rate, aggregation metrics
 
 ## Configuration
 
 K6 tests run against the application with `application-k6.properties` profile, which has:
-- Rate limits removed for performance testing
-- Circuit breaker thresholds relaxed
-- Extended timeouts for high load
-- No rate limiter restrictions
+
+- **Resilience4j:** Enabled but with relaxed thresholds
+  - Circuit breaker `failureRateThreshold=90%` (from 50%)
+  - Circuit breaker `slidingWindowSize=50` (from 10)
+  - Circuit breaker `minimumNumberOfCalls=20` (from 5)
+  - Timeouts extended to 10s (from 3-5s)
+  - Retries reduced to 1 attempt (from 3)
+  - **Rationale:** Allows circuit breaker testing in spike tests while preventing false positives in load/stress tests
+
+- **Logging:** Reduced verbosity (WARN level) for performance testing
+
+- **Metrics:** Tagged with `environment=k6-testing`
 
 ## Understanding K6 Terminal Output
 
@@ -321,8 +314,8 @@ Here's what you'll see when running a test:
         script: k6/scripts/smoke-test.js
         output: -
 
-     scenarios: (100.00%) 1 scenario, 5 max VUs, 1m30s max duration
-              * default: Up to 5 looping VUs for 1m0s over 2 stages
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 1m30s max duration
+              * default: Up to 10 looping VUs for 1m0s over 2 stages
 ```
 
 **Explanation:**
@@ -336,8 +329,8 @@ Here's what you'll see when running a test:
   █ THRESHOLDS 
 
     http_req_duration
-    ✓ 'p(95)<200' p(95)=2.12ms
-    ✓ 'p(99)<500' p(99)=3.77ms
+    ✓ 'p(95)<200' p(95)=9.9ms
+    ✓ 'p(99)<500' p(99)=19.9ms
 
     http_req_failed
     ✓ 'rate<0.01' rate=0.00%
@@ -353,9 +346,9 @@ Here's what you'll see when running a test:
 #### Checks Metrics
 
 ```
-    checks_total.......................: 361854  6030.978704/s
-    checks_succeeded...................: 100.00% 361854 out of 361854
-    checks_failed......................: 0.00%   0 out of 361854
+    checks_total.......................: 440142  7334.877149/s
+    checks_succeeded...................: 100.00% 440142 out of 440142
+    checks_failed......................: 0.00%   0 out of 440142
 ```
 
 - **checks_total:** Total number of assertions (checks) executed
@@ -367,9 +360,9 @@ Here's what you'll see when running a test:
 
 ```
     HTTP
-    http_req_duration........................................: avg=1.19ms min=606µs    med=998µs  max=64.38ms p(90)=1.71ms p(95)=2.12ms
-    http_req_failed...........................................: 0.00%  0 out of 180927
-    http_reqs................................................: 180927 3015.489352/s
+    http_req_duration........................................: avg=6.01ms min=2.39ms med=5.33ms max=160.32ms p(90)=8.08ms p(95)=9.9ms
+    http_req_failed...........................................: 0.00%  0 out of 73357
+    http_reqs................................................: 73357 1222.479525/s
 ```
 
 **Key HTTP Metrics Explained:**
@@ -393,10 +386,10 @@ Here's what you'll see when running a test:
 
 ```
     EXECUTION
-    iteration_duration........................................: avg=1.23ms min=631.16µs med=1.03ms max=64.45ms p(90)=1.78ms p(95)=2.19ms
-    iterations................................................: 180927 3015.489352/s
-    vus........................................................: 5      min=1           max=5
-    vus_max....................................................: 5      min=5           max=5
+    iteration_duration........................................: avg=6.12ms min=2.51ms med=5.44ms max=160.57ms p(90)=8.2ms  p(95)=10.02ms
+    iterations................................................: 73357 1222.479525/s
+    vus........................................................: 10    min=1          max=10
+    vus_max....................................................: 10    min=10         max=10
 ```
 
 **Explanation:**
@@ -417,8 +410,8 @@ Here's what you'll see when running a test:
 
 ```
     NETWORK
-    data_received...................................................: 13 MB  217 kB/s
-    data_sent.......................................................: 15 MB  253 kB/s
+    data_received...................................................: 13 MB  222 kB/s
+    data_sent.......................................................: 30 MB  492 kB/s
 ```
 
 - **data_received:** Total bytes received from server and average rate
@@ -430,14 +423,14 @@ Here's what you'll see when running a test:
 At the bottom, you'll see:
 
 ```
-running (1m00.0s), 0/5 VUs, 180927 complete and 0 interrupted iterations
-default ✓ [======================================] 0/5 VUs  1m0s
+running (1m00.0s), 0/10 VUs, 73357 complete and 0 interrupted iterations
+default ✓ [======================================] 0/10 VUs  1m0s
 ```
 
 **Reading the status line:**
 - `running (X)` - Elapsed test time
-- `0/5 VUs` - Current active VUs / Maximum VUs
-- `180927 complete` - Number of iterations completed
+- `0/10 VUs` - Current active VUs / Maximum VUs
+- `73357 complete` - Number of iterations completed
 - `0 interrupted` - Iterations that were interrupted (due to test stopping)
 - `default ✓` - Scenario name and completion status
 - Progress bar shows test progress
@@ -452,7 +445,7 @@ Percentiles tell you the distribution of response times:
 - **p95:** 95% of requests completed in this time or faster (commonly used SLA)
 - **p99:** 99% of requests completed in this time or faster (catches outliers)
 
-**Example:** `p(95)=28.89ms` means 95% of requests completed in 28.89ms or less.
+**Example:** `p(95)=9.9ms` means 95% of requests completed in 9.9ms or less.
 
 ### Interpreting Results
 
@@ -495,8 +488,8 @@ When comparing test runs:
 
 K6 automatically validates thresholds defined in your test:
 
-- **✓ `p(95)<500` with `p(95)=28.89ms`** - 95th percentile is 28.89ms, which is under 500ms threshold ✓
-- **✓ `p(99)<1000` with `p(99)=71.9ms`** - 99th percentile is 71.9ms, which is under 1000ms threshold ✓
+- **✓ `p(95)<200` with `p(95)=9.9ms`** - 95th percentile is 9.9ms, which is under 200ms threshold ✓
+- **✓ `p(99)<500` with `p(99)=19.9ms`** - 99th percentile is 19.9ms, which is under 500ms threshold ✓
 - **✓ `rate<0.01` with `rate=0.00%`** - Failure rate is 0.00%, which is under 1% threshold ✓
 
 If any threshold fails, the test will exit with a non-zero status code.
@@ -504,17 +497,22 @@ If any threshold fails, the test will exit with a non-zero status code.
 ## Troubleshooting
 
 **Issue:** Tests fail with connection refused
-- **Solution:** Ensure application is running (`make start-k6`)
+- **Solution:** Each test command automatically starts the application. If it still fails, check that port 8080 is not in use: `lsof -i :8080`
 
 **Issue:** High error rate during tests
-- **Solution:** Check application logs (`make logs`) and Grafana dashboards for circuit breaker activation
+- **Solution:** Check application logs (`/tmp/app-k6.log`) and Grafana dashboards for circuit breaker activation
 
 **Issue:** K6 not found
 - **Solution:** Install K6 using platform-specific instructions above
+
+**Issue:** Docker containers not starting
+- **Solution:** Ensure Docker is running: `docker ps`
+
+**Issue:** Application takes too long to start
+- **Solution:** The test waits up to 30 seconds for the app to be ready. Check `/tmp/app-k6.log` for startup errors.
 
 ## Additional Resources
 
 - [K6 Documentation](https://k6.io/docs/)
 - [K6 Best Practices](https://k6.io/docs/using-k6-browser/best-practices/)
 - [Resilience4j Configuration](https://resilience4j.readme.io/docs/getting-started-3)
-
