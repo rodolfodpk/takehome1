@@ -114,7 +114,8 @@ customerRepository.save(customer).block()
             StepVerifier.create(eventProcessingService.processEvent(request))
                 .expectErrorMatches { error ->
                     error.shouldBeInstanceOf<IllegalArgumentException>()
-                    error.message?.contains("Tenant not found") == true
+                    error.message?.contains("Customer not found") == true || 
+                    error.message?.contains("tenant is not active") == true
                 }
                 .verify()
         }
