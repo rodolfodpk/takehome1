@@ -101,6 +101,9 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
             registry.add("spring.data.redis.host") { redisContainer.host }
             registry.add("spring.data.redis.port") { redisPort.toString() }
             registry.add("spring.data.redis.password") { "" }
+            
+            // Disable schedulers in tests to prevent background processing interference
+            registry.add("metering.schedulers.enabled") { "false" }
         }
     }
 

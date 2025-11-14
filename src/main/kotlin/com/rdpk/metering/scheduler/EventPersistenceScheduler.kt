@@ -6,6 +6,7 @@ import com.rdpk.metering.repository.UsageEventRepository
 import com.rdpk.metering.service.RedisEventStorageService
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -17,8 +18,10 @@ import java.time.Duration
  * Background scheduler for batch persisting events from Redis to Postgres
  * Runs every 2 seconds to batch events efficiently
  * Cold path: Redis → Postgres (batched)
+ * Can be disabled by setting metering.schedulers.enabled=false
  */
 @Component
+@ConditionalOnProperty(name = ["metering.schedulers.enabled"], havingValue = "true", matchIfMissing = true)
 class EventPersistenceScheduler(
     private val redisEventStorageService: RedisEventStorageService,
     private val usageEventRepository: UsageEventRepository,

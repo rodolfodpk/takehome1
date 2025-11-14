@@ -6,7 +6,10 @@ import org.springframework.data.r2dbc.repository.config.EnableR2dbcRepositories
 import org.springframework.scheduling.annotation.EnableScheduling
 
 @SpringBootApplication
-@EnableR2dbcRepositories(basePackages = ["com.rdpk.metering.repository"])
+@EnableR2dbcRepositories(
+    basePackages = ["com.rdpk.metering.repository"],
+    repositoryImplementationPostfix = "Impl"
+)
 @EnableScheduling
 class Application
 

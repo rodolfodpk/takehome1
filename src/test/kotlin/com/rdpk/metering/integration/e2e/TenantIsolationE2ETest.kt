@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
  * Uses real PostgreSQL and Redis via Testcontainers - NO MOCKS
  */
 @AutoConfigureWebTestClient
+@org.springframework.test.context.TestPropertySource(properties = ["metering.schedulers.enabled=true"])
 class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
 
     @Autowired
@@ -42,6 +43,12 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
     
     @Autowired(required = false)
     var eventPersistenceScheduler: com.rdpk.metering.scheduler.EventPersistenceScheduler? = null
+    
+    @Autowired
+    lateinit var redisEventStorageService: com.rdpk.metering.service.RedisEventStorageService
+    
+    @Autowired
+    lateinit var resilienceService: com.rdpk.metering.config.ResilienceService
 
     init {
         describe("Tenant Isolation E2E") {
@@ -91,49 +98,34 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     .expectStatus().isCreated
 
                 // Manually trigger persistence from Redis to Postgres for tests
-                eventPersistenceScheduler?.batchPersistEvents()
+                // Call persistence logic directly and block on it for test reliability
+                persistEventsFromRedisToPostgres()
                 
-                // Wait for persistence (events are persisted asynchronously)
-                // Use reactive retry pattern with simple delay and retry
                 val nowInstant = clock.instant()
                 val start = nowInstant.minusSeconds(3600) // 1 hour ago
                 val end = nowInstant.plusSeconds(3600) // 1 hour from now
                 
-                // Simple retry: query with delay, retry up to 20 times using repeatWhenEmpty
-                StepVerifier.create(
-                    usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantA.id!!, customerA1.id!!, start, end)
-                        .collectList()
-                        .filter { it.isNotEmpty() }
-                        .repeatWhenEmpty { flux ->
-                            flux
-                                .take(20) // Max 20 retries
-                                .delayElements(java.time.Duration.ofMillis(250))
-                                .doOnNext { eventPersistenceScheduler?.batchPersistEvents() }
-                        }
-                        .timeout(java.time.Duration.ofSeconds(10))
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantA.id
-                        events[0].eventId shouldBe eventAId
-                        // Verify Tenant B's events are not included
-                        events.none { it.tenantId == tenantB.id } shouldBe true
-                    }
-                    .verifyComplete()
+                // Query events - they should be persisted now
+                val events = usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantA.id!!, customerA1.id!!, start, end)
+                    .collectList()
+                    .block(java.time.Duration.ofSeconds(5)) ?: emptyList()
+                
+                events shouldHaveSize 1
+                events[0].tenantId shouldBe tenantA.id
+                events[0].eventId shouldBe eventAId
+                // Verify Tenant B's events are not included
+                events.none { it.tenantId == tenantB.id } shouldBe true
 
                 // Query Tenant B's events using required method with time range
-                StepVerifier.create(
-                    usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantB.id!!, customerB1.id!!, start, end)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantB.id
-                        events[0].eventId shouldBe eventBId
-                        // Verify Tenant A's events are not included
-                        events.none { it.tenantId == tenantA.id } shouldBe true
-                    }
-                    .verifyComplete()
+                val eventsB = usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantB.id!!, customerB1.id!!, start, end)
+                    .collectList()
+                    .block(java.time.Duration.ofSeconds(5)) ?: emptyList()
+                
+                eventsB shouldHaveSize 1
+                eventsB[0].tenantId shouldBe tenantB.id
+                eventsB[0].eventId shouldBe eventBId
+                // Verify Tenant A's events are not included
+                eventsB.none { it.tenantId == tenantA.id } shouldBe true
             }
 
             it("should handle multiple tenants with same customer external ID") {
@@ -181,46 +173,31 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
                     .expectStatus().isCreated
 
                 // Manually trigger persistence from Redis to Postgres for tests
-                eventPersistenceScheduler?.batchPersistEvents()
+                persistEventsFromRedisToPostgres()
                 
-                // Wait for persistence (events are persisted asynchronously)
-                // Use reactive retry pattern with simple delay and retry
                 val nowInstant = clock.instant()
                 val start = nowInstant.minusSeconds(3600) // 1 hour ago
                 val end = nowInstant.plusSeconds(3600) // 1 hour from now
                 
-                // Simple retry: query with delay, retry up to 20 times using repeatWhenEmpty
-                StepVerifier.create(
-                    usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantA.id!!, customerA1.id!!, start, end)
-                        .collectList()
-                        .filter { it.isNotEmpty() }
-                        .repeatWhenEmpty { flux ->
-                            flux
-                                .take(20) // Max 20 retries
-                                .delayElements(java.time.Duration.ofMillis(250))
-                                .doOnNext { eventPersistenceScheduler?.batchPersistEvents() }
-                        }
-                        .timeout(java.time.Duration.ofSeconds(10))
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantA.id
-                        events[0].eventId shouldBe eventAId
-                        events[0].data["tokens"] shouldBe 100
-                    }
-                    .verifyComplete()
+                // Query events - they should be persisted now
+                val eventsA2 = usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantA.id!!, customerA1.id!!, start, end)
+                    .collectList()
+                    .block(java.time.Duration.ofSeconds(5)) ?: emptyList()
+                
+                eventsA2 shouldHaveSize 1
+                eventsA2[0].tenantId shouldBe tenantA.id
+                eventsA2[0].eventId shouldBe eventAId
+                eventsA2[0].data["tokens"] shouldBe 100
 
-                StepVerifier.create(
-                    usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantB.id!!, customerB1.id!!, start, end)
-                        .collectList()
-                )
-                    .assertNext { events ->
-                        events shouldHaveSize 1
-                        events[0].tenantId shouldBe tenantB.id
-                        events[0].eventId shouldBe eventBId
-                        events[0].data["tokens"] shouldBe 200
-                    }
-                    .verifyComplete()
+                // Query Tenant B's events
+                val eventsB2 = usageEventRepository.findByTenantIdAndCustomerIdAndTimestampBetween(tenantB.id!!, customerB1.id!!, start, end)
+                    .collectList()
+                    .block(java.time.Duration.ofSeconds(5)) ?: emptyList()
+                
+                eventsB2 shouldHaveSize 1
+                eventsB2[0].tenantId shouldBe tenantB.id
+                eventsB2[0].eventId shouldBe eventBId
+                eventsB2[0].data["tokens"] shouldBe 200
             }
         }
     }
@@ -244,6 +221,30 @@ class TenantIsolationE2ETest : AbstractKotestIntegrationTest() {
             updated = now
         )
         return customerRepository.save(customer).block()!!
+    }
+    
+    /**
+     * Persist events from Redis to PostgreSQL synchronously for test reliability
+     * This directly calls the persistence logic and blocks until completion
+     */
+    private fun persistEventsFromRedisToPostgres() {
+        redisEventStorageService.getPendingEvents(1000)
+            .flatMap { batch ->
+                if (batch.isEmpty()) {
+                    Mono.empty<Void>()
+                } else {
+                    // Batch insert to Postgres with resilience
+                    resilienceService.applyPostgresResilience(
+                        usageEventRepository.saveAll(batch)
+                            .then()
+                    )
+                        .flatMap {
+                            // Remove from Redis after successful persistence
+                            redisEventStorageService.removeEvents(batch)
+                        }
+                }
+            }
+            .block(java.time.Duration.ofSeconds(10))
     }
 }
 

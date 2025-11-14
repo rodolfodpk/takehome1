@@ -130,7 +130,8 @@ class ArchitectureTest : DescribeSpec({
                 .and().areNotNestedClasses()
                 .should().haveSimpleNameEndingWith("Repository")
                 .orShould().haveSimpleNameEndingWith("RepositoryExtensions")
-                .because("Repositories must follow naming convention: *Repository or *RepositoryExtensions")
+                .orShould().haveSimpleNameEndingWith("RepositoryImpl")
+                .because("Repositories must follow naming convention: *Repository, *RepositoryExtensions, or *RepositoryImpl")
                 .check(classes)
         }
 

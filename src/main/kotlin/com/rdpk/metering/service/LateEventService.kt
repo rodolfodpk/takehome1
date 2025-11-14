@@ -81,7 +81,14 @@ class LateEventService(
         )
         
         return resilienceService.applyPostgresResilience(
-            lateEventRepository.save(lateEvent)
+            lateEventRepository.saveWithJsonb(
+                eventId = lateEvent.eventId,
+                originalTimestamp = lateEvent.originalTimestamp,
+                receivedTimestamp = lateEvent.receivedTimestamp,
+                tenantId = lateEvent.tenantId,
+                customerId = lateEvent.customerId,
+                data = lateEvent.data
+            )
         )
             .doOnSuccess {
                 log.debug("Stored late event: ${event.eventId}")
@@ -93,13 +100,28 @@ class LateEventService(
     
     /**
      * Serialize UsageEvent to JSON for storage
+     * Only serializes the essential fields needed to reconstruct the event
+     * Excludes id, created, updated to avoid null issues and keep JSON clean
+     * Ensures valid JSON that PostgreSQL can parse
      */
     private fun serializeEvent(event: UsageEvent): String {
         return try {
-            objectMapper.writeValueAsString(event)
+            // Create a clean map with only the fields we need to reconstruct the event
+            // Same pattern as AggregationService.serializeAggregationData which works
+            val eventMap = mapOf(
+                "eventId" to event.eventId,
+                "tenantId" to event.tenantId,
+                "customerId" to event.customerId,
+                "timestamp" to event.timestamp.toString(),
+                "data" to event.data
+            )
+            val json = objectMapper.writeValueAsString(eventMap)
+            // Validate it's parseable JSON before storing
+            objectMapper.readTree(json)
+            json
         } catch (e: Exception) {
             log.error("Error serializing event for late event storage: ${event.eventId}", e)
-            "{}"
+            throw e // Don't return "{}" - fail fast so we can debug
         }
     }
     
@@ -114,12 +136,43 @@ class LateEventService(
     
     /**
      * Deserialize LateEvent data back to UsageEvent
+     * Reconstructs UsageEvent from the stored JSON
      */
     fun deserializeEvent(lateEvent: LateEvent): UsageEvent? {
         return try {
-            objectMapper.readValue(lateEvent.data, UsageEvent::class.java)
+            // lateEvent.data is a JSON string read from database (via data::text)
+            // If using to_jsonb(), it might be double-encoded (JSON string containing JSON)
+            // If using ::jsonb, it should be the JSON object directly
+            var jsonString = lateEvent.data.trim()
+            
+            // Check if it's a JSON-encoded string (starts and ends with quotes)
+            if (jsonString.startsWith("\"") && jsonString.endsWith("\"")) {
+                // It's a JSON string containing JSON - decode it first
+                jsonString = objectMapper.readValue(jsonString, String::class.java)
+            }
+            
+            // Now parse the actual JSON
+            @Suppress("UNCHECKED_CAST")
+            val eventMap = objectMapper.readValue(jsonString, Map::class.java) as Map<String, Any>
+            
+            // Extract the nested data field
+            @Suppress("UNCHECKED_CAST")
+            val dataMap = (eventMap["data"] as? Map<*, *>)?.let { 
+                it as Map<String, Any> 
+            } ?: emptyMap<String, Any>()
+            
+            UsageEvent(
+                id = null,
+                eventId = eventMap["eventId"] as String,
+                tenantId = (eventMap["tenantId"] as Number).toLong(),
+                customerId = (eventMap["customerId"] as Number).toLong(),
+                timestamp = Instant.parse(eventMap["timestamp"] as String),
+                data = dataMap,
+                created = null,
+                updated = null
+            )
         } catch (e: Exception) {
-            log.error("Error deserializing late event: ${lateEvent.eventId}", e)
+            log.error("Error deserializing late event: ${lateEvent.eventId}, data: ${lateEvent.data.take(200)}", e)
             null
         }
     }

@@ -12,6 +12,7 @@ import com.rdpk.metering.service.DistributedLockService
 import com.rdpk.metering.service.RedisStateService
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -27,8 +28,10 @@ import java.time.LocalDateTime
  * Runs at configurable interval (default: 30 seconds) to process completed windows
  * Uses distributed locks to prevent duplicate processing
  * Configure interval via: metering.aggregation.processing-interval-ms
+ * Can be disabled by setting metering.schedulers.enabled=false
  */
 @Component
+@ConditionalOnProperty(name = ["metering.schedulers.enabled"], havingValue = "true", matchIfMissing = true)
 class AggregationScheduler(
     private val customerRepository: CustomerRepository,
     private val aggregationWindowRepository: AggregationWindowRepository,
