@@ -264,30 +264,87 @@ K6_OUTPUT_FILE="/tmp/k6-output-$$.log"
 k6 run "$TEST_SCRIPT" 2>&1 | tee "$K6_OUTPUT_FILE"
 K6_EXIT_CODE=${PIPESTATUS[0]}
 
-# Update test results document
-RESULTS_FILE="docs/K6_TEST_RESULTS.md"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+# Update test results document ONLY for multi-instance setup
+# K6_TEST_RESULTS.md should only contain results from multi-instance testing
+if [ "$APP_ALREADY_RUNNING" = "true" ]; then
+    RESULTS_FILE="docs/K6_TEST_RESULTS.md"
+    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-# Remove previous section for this test (if exists)
-if [ -f "$RESULTS_FILE" ]; then
-    # Use awk to remove the section between "## $TEST_NAME" and next "##" or end of file
-    awk -v test_name="$TEST_NAME" '
-        BEGIN { in_section = 0; skip_blank = 0 }
-        /^## / {
-            if (in_section) { in_section = 0; skip_blank = 0 }
-            if (index($0, test_name) > 0) { in_section = 1; skip_blank = 1; next }
-        }
-        in_section && /^$/ && skip_blank { skip_blank = 0; next }
-        !in_section { print }
-    ' "$RESULTS_FILE" > "$RESULTS_FILE.tmp" && mv "$RESULTS_FILE.tmp" "$RESULTS_FILE"
+    echo "  - Updating test results document (multi-instance setup detected)"
+
+    # Remove previous section for this test (if exists)
+    if [ -f "$RESULTS_FILE" ]; then
+        # Use awk to remove the section between "## $TEST_NAME" and next "##" or end of file
+        awk -v test_name="$TEST_NAME" '
+            BEGIN { in_section = 0; skip_blank = 0 }
+            /^## / {
+                if (in_section) { in_section = 0; skip_blank = 0 }
+                if (index($0, test_name) > 0) { in_section = 1; skip_blank = 1; next }
+            }
+            in_section && /^$/ && skip_blank { skip_blank = 0; next }
+            !in_section { print }
+        ' "$RESULTS_FILE" > "$RESULTS_FILE.tmp" && mv "$RESULTS_FILE.tmp" "$RESULTS_FILE"
+    fi
+
+    # Extract only essential metrics from k6 output
+    # Parse key metrics: throughput, error rate, p95 latency, p99 latency, VUs, duration
+    extract_metrics() {
+        local output_file="$1"
+        local throughput=""
+        local error_rate=""
+        local p95=""
+        local p99=""
+        local vus_max=""
+        local duration=""
+        local threshold_status=""
+        
+        # Extract http_reqs (throughput) - format: "http_reqs................: 2797   279.663895/s"
+        throughput=$(grep -E "^[[:space:]]*http_reqs" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/\/s$/){print $i;exit}}}')
+        
+        # Extract http_req_failed (error rate) - format: "http_req_failed.........: 0.00%  0 out of 2797"
+        error_rate=$(grep -E "^[[:space:]]*http_req_failed" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/^[0-9.]+%$/){print $i;exit}}}')
+        
+        # Extract p95 latency - format: "http_req_duration...: avg=4.97ms ... p(95)=7.46ms"
+        p95=$(grep -E "http_req_duration.*p\(95\)" "$output_file" | head -1 | sed -n 's/.*p(95)=\([0-9.]\+\)\([a-z]*\).*/\1\2/p')
+        
+        # Extract p99 latency (if available)
+        p99=$(grep -E "http_req_duration.*p\(99\)" "$output_file" | head -1 | sed -n 's/.*p(99)=\([0-9.]\+\)\([a-z]*\).*/\1\2/p')
+        
+        # Extract vus_max - format: "vus_max................: 2      min=2         max=2"
+        vus_max=$(grep -E "^[[:space:]]*vus_max" "$output_file" | head -1 | awk '{print $2}')
+        
+        # Extract test duration from final status line - format: "running (10.0s), 0/2 VUs"
+        duration=$(grep -E "^running.*complete.*iterations" "$output_file" | tail -1 | sed -n 's/.*running[[:space:]]*(\([0-9ms.]\+\)).*/\1/p')
+        
+        # Extract threshold status
+        if grep -q "✓.*p(95)" "$output_file"; then
+            threshold_status="✅ Pass"
+        elif grep -q "✗.*p(95)" "$output_file"; then
+            threshold_status="❌ Fail"
+        else
+            threshold_status="⚠️  Unknown"
+        fi
+        
+        # Build concise summary
+        echo ""
+        echo "**Metrics:**"
+        echo "- **Throughput:** ${throughput:-N/A}"
+        echo "- **Error Rate:** ${error_rate:-N/A}"
+        echo "- **p95 Latency:** ${p95:-N/A}"
+        [ -n "$p99" ] && echo "- **p99 Latency:** $p99"
+        echo "- **Max VUs:** ${vus_max:-N/A}"
+        echo "- **Duration:** ${duration:-N/A}"
+        echo "- **Status:** $threshold_status"
+    }
+
+    # Append concise results
+    echo "" >> "$RESULTS_FILE"
+    echo "## $TEST_NAME - $TIMESTAMP" >> "$RESULTS_FILE"
+    extract_metrics "$K6_OUTPUT_FILE" >> "$RESULTS_FILE"
+    echo "" >> "$RESULTS_FILE"
+else
+    echo "  - Skipping test results update (single-instance test - only multi-instance results are documented)"
 fi
-
-# Append new results
-echo "" >> "$RESULTS_FILE"
-echo "## $TEST_NAME - $TIMESTAMP" >> "$RESULTS_FILE"
-echo "" >> "$RESULTS_FILE"
-cat "$K6_OUTPUT_FILE" >> "$RESULTS_FILE"
-echo "" >> "$RESULTS_FILE"
 
 # Cleanup temp file
 rm -f "$K6_OUTPUT_FILE"
