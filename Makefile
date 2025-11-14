@@ -1,4 +1,4 @@
-.PHONY: help build test start start-obs stop clean docker-build docker-build-multi start-multi stop-multi
+.PHONY: help build test start start-obs stop clean cleanup docker-build docker-build-multi start-multi stop-multi check-ports verify-urls
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -13,19 +13,67 @@ test: ## Run all tests
 	mvn test
 
 start: ## Start application with full observability stack (Postgres + Redis + Prometheus + Grafana)
-	docker-compose up -d
+	@echo "🚀 Starting infrastructure services..."
+	@docker-compose up -d postgres redis prometheus grafana
 	@echo "Waiting for services to be ready..."
-	@sleep 10
-	mvn spring-boot:run
+	@sleep 5
+	@echo "  - Verifying PostgreSQL is ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if docker-compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then \
+			break; \
+		fi; \
+		if [ $$i -eq 10 ]; then \
+			echo "  ⚠️  PostgreSQL may not be ready. Check logs with: docker-compose logs postgres"; \
+		fi; \
+		sleep 1; \
+	done
+	@echo "  - Checking if database user 'takehome1' exists..."
+	@USER_EXISTS=$$(docker-compose exec -T postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='takehome1'" 2>/dev/null | tr -d ' ' || echo ""); \
+	if [ -z "$$USER_EXISTS" ]; then \
+		echo "  - User 'takehome1' does not exist. Creating user and granting permissions..."; \
+		docker-compose exec -T postgres psql -U postgres -c "CREATE USER takehome1 WITH PASSWORD 'takehome1';" 2>/dev/null || true; \
+		docker-compose exec -T postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE takehome1 TO takehome1;" 2>/dev/null || true; \
+		docker-compose exec -T postgres psql -U postgres -d takehome1 -c "GRANT ALL ON SCHEMA public TO takehome1;" 2>/dev/null || true; \
+		echo "  ✅ User 'takehome1' created successfully"; \
+	else \
+		echo "  ✅ User 'takehome1' already exists"; \
+	fi
+	@echo "✅ Infrastructure services are ready!"
+	@echo "Starting Spring Boot application..."
+	@mvn spring-boot:run
 
 start-obs: ## Alias for 'start' - Start application with full observability stack
 	@make start
 
 start-k6: ## Start application with K6 testing profile and observability stack
-	docker-compose up -d
+	@echo "🚀 Starting infrastructure services..."
+	@docker-compose up -d postgres redis prometheus grafana
 	@echo "Waiting for services to be ready..."
-	@sleep 10
-	SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run
+	@sleep 5
+	@echo "  - Verifying PostgreSQL is ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if docker-compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then \
+			break; \
+		fi; \
+		if [ $$i -eq 10 ]; then \
+			echo "  ⚠️  PostgreSQL may not be ready. Check logs with: docker-compose logs postgres"; \
+		fi; \
+		sleep 1; \
+	done
+	@echo "  - Checking if database user 'takehome1' exists..."
+	@USER_EXISTS=$$(docker-compose exec -T postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='takehome1'" 2>/dev/null | tr -d ' ' || echo ""); \
+	if [ -z "$$USER_EXISTS" ]; then \
+		echo "  - User 'takehome1' does not exist. Creating user and granting permissions..."; \
+		docker-compose exec -T postgres psql -U postgres -c "CREATE USER takehome1 WITH PASSWORD 'takehome1';" 2>/dev/null || true; \
+		docker-compose exec -T postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE takehome1 TO takehome1;" 2>/dev/null || true; \
+		docker-compose exec -T postgres psql -U postgres -d takehome1 -c "GRANT ALL ON SCHEMA public TO takehome1;" 2>/dev/null || true; \
+		echo "  ✅ User 'takehome1' created successfully"; \
+	else \
+		echo "  ✅ User 'takehome1' already exists"; \
+	fi
+	@echo "✅ Infrastructure services are ready!"
+	@echo "Starting Spring Boot application with k6 profile..."
+	@SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run
 
 start-k6-obs: ## Alias for 'start-k6' - Start with observability stack + K6 profile
 	@make start-k6
@@ -33,9 +81,18 @@ start-k6-obs: ## Alias for 'start-k6' - Start with observability stack + K6 prof
 stop: ## Stop all Docker containers
 	docker-compose down
 
+check-ports: ## Check all application ports for conflicts
+	@./scripts/check-ports.sh
+
+verify-urls: ## Verify all URLs documented in README.md
+	@./scripts/verify-urls.sh
+
 clean: ## Clean build artifacts and Docker volumes
 	mvn clean
-	docker-compose down -v
+	@./scripts/cleanup.sh
+
+cleanup: ## Stop server and remove all Docker containers with volumes
+	@./scripts/cleanup.sh
 
 docker-build: ## Build Docker image (automated - builds from source)
 	@echo "🔨 Building Docker image..."
