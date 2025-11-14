@@ -472,6 +472,43 @@ kill -9 <PID>
 
 # Or stop all services
 make stop
+
+# For complete cleanup (removes volumes, frees port, stops everything)
+make cleanup
+```
+
+### Complete Cleanup (Stuck Processes, Port Conflicts, Fresh Start)
+
+**Problem:** Application won't start, port conflicts, stuck processes, or need a completely fresh start
+
+**Solution:** Use the cleanup script to stop everything and remove all Docker volumes:
+```bash
+# Complete cleanup: stops app, removes all Docker containers and volumes, frees port 8080
+make cleanup
+```
+
+**What it does:**
+- Stops any running Spring Boot application processes
+- Stops all Docker containers and removes volumes (⚠️ **WARNING:** This deletes all database data)
+- Frees port 8080 by killing any processes using it
+
+**When to use:**
+- Port 8080 is stuck/in use and `make stop` doesn't work
+- Docker containers are in a bad state
+- Need a completely fresh start with clean database
+- Application processes won't stop normally
+- After switching between single-instance and multi-instance setups
+
+**When NOT to use:**
+- If you want to preserve database data (use `make stop` instead)
+- If you're actively debugging and need to preserve state
+
+**After cleanup:**
+```bash
+# Start fresh
+make start-fresh  # Starts with clean database
+# or
+make start        # Starts normally (will reuse existing volumes if any)
 ```
 
 ### K6 Tests Not Running
