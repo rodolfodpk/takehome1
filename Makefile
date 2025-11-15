@@ -216,6 +216,9 @@ k6-spike: ## Run K6 spike test (spike 50→500→50, 2.5 minutes, test circuit b
 
 k6-test: ## Run all K6 tests sequentially (warmup, smoke, load, stress, spike)
 	@echo "🧪 Running all k6 tests..."
+	@echo "🧹 Running initial cleanup before tests..."
+	@make k6-cleanup
+	@echo ""
 	@make k6-warmup
 	@echo ""
 	@make k6-smoke
@@ -255,6 +258,9 @@ k6-spike-multi: ## Run K6 spike test against multi-instance setup (2 app instanc
 k6-test-multi: ## Run all K6 tests against multi-instance setup (warmup, smoke, load, stress, spike)
 	@echo "🧪 Running all k6 tests against multi-instance setup..."
 	@echo "  Testing distributed locks across 2 app instances..."
+	@echo "🧹 Running initial cleanup before tests..."
+	@make k6-cleanup
+	@echo ""
 	@make k6-warmup-multi
 	@echo ""
 	@make k6-smoke-multi

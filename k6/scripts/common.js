@@ -39,14 +39,34 @@ const MODELS = [
   'dall-e-3'
 ];
 
+// Counter for unique event IDs (increments per VU, resets per test run)
+let eventIdCounter = 0;
+
 /**
  * Generate a unique event ID
- * Uses timestamp + random number for uniqueness
+ * Uses timestamp + VU ID + iteration + counter + high-precision random for uniqueness
+ * This ensures no collisions even with high concurrency across multiple VUs
  */
 export function generateEventId() {
   const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 1000000);
-  return `event-${timestamp}-${random}`;
+  const counter = ++eventIdCounter;
+  // Use multiple random components for better entropy
+  const random1 = Math.floor(Math.random() * 1000000);
+  const random2 = Math.floor(Math.random() * 1000000);
+  const vuId = __VU || 0; // VU ID from k6 (1, 2, 3, ...)
+  const iteration = __ITER || 0; // Iteration number from k6
+  // Use performance.now() if available for microsecond precision, otherwise use additional random
+  let microTime = '';
+  try {
+    if (typeof performance !== 'undefined' && performance.now) {
+      microTime = '-' + Math.floor(performance.now() * 1000);
+    }
+  } catch (e) {
+    // performance.now() not available, use extra random instead
+    microTime = '-' + Math.floor(Math.random() * 1000000);
+  }
+  // Combine all components to ensure uniqueness across VUs and time
+  return `event-${timestamp}${microTime}-${vuId}-${iteration}-${counter}-${random1}-${random2}`;
 }
 
 /**

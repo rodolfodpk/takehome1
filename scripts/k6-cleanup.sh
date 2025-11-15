@@ -37,6 +37,18 @@ TRUNCATE TABLE usage_events CASCADE;
 -- Keep tenants and customers (seed data)
 EOF
 
+# Verify seed data exists (should be created by Flyway migration V2__seed_tenants_and_customers.sql)
+echo "  - Verifying seed data exists..."
+SEED_COUNT=$($DOCKER_COMPOSE_CMD exec -T postgres psql -U takehome1 -d takehome1 -t -c "SELECT COUNT(*) FROM tenants WHERE id IN (1, 2) AND active = true;" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$SEED_COUNT" != "2" ]; then
+    echo "  ⚠️  Warning: Seed data (tenants 1 and 2) not found!"
+    echo "  - Seed data should be created by Flyway migration V2__seed_tenants_and_customers.sql"
+    echo "  - Restart the application to trigger Flyway migrations"
+    echo "  - This may cause k6 tests to fail"
+else
+    echo "  ✅ Seed data verified"
+fi
+
 # Clean Redis - Flush all keys
 echo "  - Cleaning Redis..."
 $DOCKER_COMPOSE_CMD exec -T redis redis-cli -a takehome1 FLUSHDB > /dev/null 2>&1 || echo "    (Redis cleanup skipped - container may not be ready)"

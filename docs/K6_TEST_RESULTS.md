@@ -10,10 +10,10 @@ This file contains concise results from k6 performance tests. Results are automa
 - **[Multi-Instance Setup](MULTI_INSTANCE.md)** - Guide for multi-instance testing
 - **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
 
-## Warm-up Test - 2025-11-15 00:31:16
+## Warm-up Test - 2025-11-15 01:17:36
 
 **Metrics:**
-- **Throughput:** 250.318696/s
+- **Throughput:** 572.973659/s
 - **Error Rate:** N/A
 - **p95 Latency:** N/A
 - **Max VUs:** 2
@@ -21,10 +21,10 @@ This file contains concise results from k6 performance tests. Results are automa
 - **Status:** ✅ Pass
 
 
-## Smoke Test - 2025-11-15 00:32:21
+## Smoke Test - 2025-11-15 01:18:40
 
 **Metrics:**
-- **Throughput:** 1957.426005/s
+- **Throughput:** 2322.574748/s
 - **Error Rate:** N/A
 - **p95 Latency:** N/A
 - **Max VUs:** 10
@@ -32,7 +32,7 @@ This file contains concise results from k6 performance tests. Results are automa
 - **Status:** ✅ Pass
 
 
-## Load Test - 2025-11-15 00:34:25
+## Load Test - 2025-11-15 01:20:44
 
 **Metrics:**
 - **Throughput:** N/A
@@ -43,10 +43,10 @@ This file contains concise results from k6 performance tests. Results are automa
 - **Status:** ✅ Pass
 
 
-## Stress Test - 2025-11-15 00:37:29
+## Stress Test - 2025-11-15 01:23:49
 
 **Metrics:**
-- **Throughput:** 4395.438523/s
+- **Throughput:** 4636.023596/s
 - **Error Rate:** N/A
 - **p95 Latency:** N/A
 - **Max VUs:** 500
@@ -54,10 +54,10 @@ This file contains concise results from k6 performance tests. Results are automa
 - **Status:** ✅ Pass
 
 
-## Spike Test - 2025-11-15 00:40:03
+## Spike Test - 2025-11-15 01:26:23
 
 **Metrics:**
-- **Throughput:** 5345.453391/s
+- **Throughput:** 5246.771368/s
 - **Error Rate:** N/A
 - **p95 Latency:** N/A
 - **Max VUs:** 500

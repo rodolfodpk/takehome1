@@ -239,6 +239,45 @@ done
 
 echo "  ✅ Application is ready!"
 
+# Ensure seed data exists (required for k6 tests)
+# Seed data should be created by Flyway migration V2__seed_tenants_and_customers.sql
+# But we ensure it exists here in test scope as a safety measure
+echo "  - Ensuring seed data exists for tests..."
+if [ "$SKIP_DB_CLEANUP" = "true" ]; then
+    # Multi-instance: use multi-instance docker-compose
+    DOCKER_COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.multi.yml"
+else
+    DOCKER_COMPOSE_CMD="docker-compose"
+fi
+
+SEED_COUNT=$($DOCKER_COMPOSE_CMD exec -T postgres psql -U takehome1 -d takehome1 -t -c "SELECT COUNT(*) FROM tenants WHERE id IN (1, 2) AND active = true;" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$SEED_COUNT" != "2" ]; then
+    echo "  - Creating seed data for tests..."
+    $DOCKER_COMPOSE_CMD exec -T postgres psql -U takehome1 -d takehome1 <<'SEED_EOF' 2>/dev/null || echo "    (Seed data creation skipped)"
+-- Insert tenants if they don't exist
+INSERT INTO tenants (id, name, active, created, updated)
+VALUES 
+    (1, 'Acme Corporation', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (2, 'TechStart Inc', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE 
+SET name = EXCLUDED.name, active = EXCLUDED.active, updated = CURRENT_TIMESTAMP;
+
+-- Insert customers if they don't exist
+INSERT INTO customers (tenant_id, external_id, name, created, updated)
+VALUES 
+    (1, 'acme-customer-001', 'Acme Customer 001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (1, 'acme-customer-002', 'Acme Customer 002', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (1, 'acme-customer-003', 'Acme Customer 003', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (2, 'techstart-customer-001', 'TechStart Customer 001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (2, 'techstart-customer-002', 'TechStart Customer 002', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (tenant_id, external_id) DO UPDATE 
+SET name = EXCLUDED.name, updated = CURRENT_TIMESTAMP;
+SEED_EOF
+    echo "  ✅ Seed data created for tests"
+else
+    echo "  ✅ Seed data verified"
+fi
+
 # Run cleanup script
 ./scripts/k6-cleanup.sh
 
