@@ -1,6 +1,7 @@
 #!/bin/bash
-# Helper script to run k6 tests with full setup and teardown
+# Helper script to run k6 tests against multi-instance setup
 # Usage: k6-run-test.sh <test-script-name>
+# Requires: Multi-instance stack must be running (make start-multi)
 
 set -e
 
@@ -15,23 +16,7 @@ fi
 cleanup() {
     echo ""
     echo "🧹 Cleaning up..."
-    # Only cleanup if we started the app ourselves (not multi-instance)
-    if [ -f /tmp/app-k6.pid ]; then
-        PID=$(cat /tmp/app-k6.pid)
-        if ps -p $PID > /dev/null 2>&1; then
-            echo "  - Stopping application (PID: $PID)..."
-            kill $PID 2>/dev/null || true
-            sleep 2
-            # Force kill if still running
-            if ps -p $PID > /dev/null 2>&1; then
-                kill -9 $PID 2>/dev/null || true
-            fi
-        fi
-        rm -f /tmp/app-k6.pid
-    else
-        echo "  - Application was already running (multi-instance setup)"
-        echo "  - Application containers are still running"
-    fi
+    echo "  - Application containers are still running"
     echo "  - Note: Grafana and Prometheus are still running"
     echo "  - Access Grafana at http://localhost:3000 (admin/admin)"
     echo "  - Access Prometheus at http://localhost:9090"
@@ -45,13 +30,25 @@ trap cleanup EXIT INT TERM
 # Setup environment
 echo "🔧 Setting up k6 test environment..."
 
+# Verify multi-instance stack is running
+if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then
+    echo "  ❌ Error: Multi-instance stack is not running."
+    echo "  Please run 'make start-multi' first."
+    exit 1
+fi
+
+echo "  ✅ Multi-instance stack detected"
+
+# Use multi-instance docker-compose command
+DOCKER_COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.multi.yml"
+
 # Check if Grafana/Prometheus are already running
 GRAFANA_RUNNING=$(docker ps --filter "name=takehome1-grafana" --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-grafana" && echo "yes" || echo "no")
 PROMETHEUS_RUNNING=$(docker ps --filter "name=takehome1-prometheus" --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-prometheus" && echo "yes" || echo "no")
 
 if [ "$GRAFANA_RUNNING" = "no" ] || [ "$PROMETHEUS_RUNNING" = "no" ]; then
     echo "  - Starting Grafana and Prometheus (if not running)..."
-    docker-compose up -d prometheus grafana
+    $DOCKER_COMPOSE_CMD up -d prometheus grafana
     echo "  - Waiting for Grafana and Prometheus to be ready..."
     sleep 5
     
@@ -73,156 +70,61 @@ if [ "$GRAFANA_RUNNING" = "no" ] || [ "$PROMETHEUS_RUNNING" = "no" ]; then
         sleep 1
     done
 else
-    echo "  - Grafana and Prometheus are already running (session will persist!)"
+    echo "  - Grafana and Prometheus are already running"
 fi
 
-# Check if multi-instance setup is running (BASE_URL set to nginx)
-BASE_URL=${BASE_URL:-http://localhost:8080}
-SKIP_DB_CLEANUP=false
-
-# If BASE_URL points to nginx (multi-instance), skip database cleanup
-if echo "$BASE_URL" | grep -q "localhost:8080" && curl -s "$BASE_URL/actuator/health" > /dev/null 2>&1; then
-    echo "  - Multi-instance setup detected - skipping database cleanup"
-    echo "  - Using existing PostgreSQL and Redis from multi-instance stack"
-    SKIP_DB_CLEANUP=true
-fi
-
-# Restart PostgreSQL and Redis with clean volumes (only for single-instance)
-if [ "$SKIP_DB_CLEANUP" = "false" ]; then
-    echo "  - Restarting PostgreSQL and Redis with clean data..."
-    docker-compose stop postgres redis > /dev/null 2>&1 || true
-    docker-compose rm -f postgres redis > /dev/null 2>&1 || true
-    docker volume rm takehome1_postgres_data takehome1_redis_data > /dev/null 2>&1 || true
-    docker-compose up -d postgres redis
-
-    echo "  - Waiting for PostgreSQL and Redis to be ready..."
-    sleep 3
-
-    echo "  - Checking PostgreSQL health..."
-    for i in {1..10}; do
-        if docker-compose exec -T postgres pg_isready -U takehome1 > /dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-
-    echo "  - Checking Redis health..."
-    for i in {1..10}; do
-        if docker-compose exec -T redis redis-cli -a takehome1 ping > /dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-else
-    # For multi-instance, just verify database services are healthy
-    echo "  - Verifying PostgreSQL and Redis health..."
-    for i in {1..10}; do
-        if docker-compose -f docker-compose.yml -f docker-compose.multi.yml exec -T postgres pg_isready -U takehome1 > /dev/null 2>&1 && \
-           docker-compose -f docker-compose.yml -f docker-compose.multi.yml exec -T redis redis-cli -a takehome1 ping > /dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-fi
+# Verify database services are healthy
+echo "  - Verifying PostgreSQL and Redis health..."
+for i in {1..10}; do
+    if $DOCKER_COMPOSE_CMD exec -T postgres pg_isready -U takehome1 > /dev/null 2>&1 && \
+       $DOCKER_COMPOSE_CMD exec -T redis redis-cli -a takehome1 ping > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
 
 echo "✅ Services are ready!"
 echo ""
 echo "📊 Observability:"
-echo "  - Grafana: http://localhost:3000 (admin/admin) - Session persists!"
+echo "  - Grafana: http://localhost:3000 (admin/admin)"
 echo "  - Prometheus: http://localhost:9090"
 echo ""
 
-# Check if app is already running (multi-instance setup)
-# BASE_URL is set by make target, default to http://localhost:8080
+# BASE_URL is set by make target, default to http://localhost:8080 (nginx load balancer)
 BASE_URL=${BASE_URL:-http://localhost:8080}
-APP_ALREADY_RUNNING=false
 
-# Check if health endpoint is already responding (multi-instance Docker setup)
-# Also check if we're using nginx (port 8080) which indicates multi-instance
-if echo "$BASE_URL" | grep -q "localhost:8080" && curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/actuator/health" 2>/dev/null | grep -q "200"; then
-    echo "  - Application is already running (multi-instance setup detected)"
-    echo "  - Using existing application at $BASE_URL"
-    APP_ALREADY_RUNNING=true
-elif [ "$SKIP_DB_CLEANUP" = "true" ]; then
-    # If we skipped DB cleanup, we're definitely using multi-instance
-    echo "  - Application is already running (multi-instance setup)"
-    echo "  - Using existing application at $BASE_URL"
-    APP_ALREADY_RUNNING=true
-fi
-
-# Start application only if not already running
-if [ "$APP_ALREADY_RUNNING" = "false" ]; then
-    echo "  - Starting application with k6 profile..."
-    cd "$(dirname "$0")/.."
-    SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run > /tmp/app-k6.log 2>&1 &
-    echo $! > /tmp/app-k6.pid
-    
-    echo "  - Waiting for application to be ready..."
-    # Wait for health endpoint to return 200
-    for i in {1..30}; do
-        if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/actuator/health" 2>/dev/null | grep -q "200"; then
-            echo "  - Health endpoint is responding"
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo "  ⚠️  Health endpoint not ready after 30 seconds"
-            exit 1
-        fi
-        sleep 1
-    done
-else
-    # For multi-instance, verify app is responding (more lenient)
-    echo "  - Verifying application is responding..."
-    APP_RESPONDING=false
-    for i in {1..30}; do
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/actuator/health" 2>/dev/null || echo "000")
-        if [ "$HTTP_CODE" = "200" ]; then
-            echo "  - Application is healthy (HTTP 200)"
-            APP_RESPONDING=true
-            break
-        elif [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "" ]; then
-            # App is responding (even if health is DOWN), which is acceptable for multi-instance
-            # Health might be DOWN due to transient connection pool issues, but app can still handle requests
-            echo "  - Application is responding (HTTP $HTTP_CODE) - proceeding with test"
-            APP_RESPONDING=true
-            break
-        fi
-        if [ $i -eq 30 ]; then
-            echo "  ⚠️  Application not responding after 30 seconds"
-            echo "  - Checking container status..."
-            docker ps --filter "name=takehome1-app" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || true
-            exit 1
-        fi
-        sleep 1
-    done
-    if [ "$APP_RESPONDING" = "false" ]; then
-        echo "  ⚠️  Application health check failed"
+# Verify application is responding
+echo "  - Verifying application is responding..."
+APP_RESPONDING=false
+for i in {1..30}; do
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/actuator/health" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "  - Application is healthy (HTTP 200)"
+        APP_RESPONDING=true
+        break
+    elif [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "" ]; then
+        # App is responding (even if health is DOWN), which is acceptable for multi-instance
+        # Health might be DOWN due to transient connection pool issues, but app can still handle requests
+        echo "  - Application is responding (HTTP $HTTP_CODE) - proceeding with test"
+        APP_RESPONDING=true
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "  ⚠️  Application not responding after 30 seconds"
+        echo "  - Checking container status..."
+        docker ps --filter "name=takehome1-app" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || true
         exit 1
     fi
+    sleep 1
+done
+if [ "$APP_RESPONDING" = "false" ]; then
+    echo "  ⚠️  Application health check failed"
+    exit 1
 fi
 
 # Wait additional 2-3 seconds for full initialization
 echo "  - Waiting for full initialization..."
 sleep 3
-
-# Verify health endpoint is stable (check multiple times)
-if [ "$APP_ALREADY_RUNNING" = "false" ]; then
-    echo "  - Verifying application stability..."
-    health_checks_passed=0
-    for i in {1..5}; do
-        if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/actuator/health" 2>/dev/null | grep -q "200"; then
-            health_checks_passed=$((health_checks_passed + 1))
-        fi
-        sleep 1
-    done
-
-    if [ $health_checks_passed -lt 3 ]; then
-        echo "  ⚠️  Health endpoint not stable (passed $health_checks_passed/5 checks)"
-        echo "  - Checking application logs..."
-        tail -20 /tmp/app-k6.log 2>&1 | grep -E "(ERROR|Exception|Started)" | tail -5
-        exit 1
-    fi
-fi
 
 # Check Prometheus metrics endpoint is ready
 echo "  - Checking Prometheus metrics endpoint..."
@@ -243,12 +145,6 @@ echo "  ✅ Application is ready!"
 # Seed data should be created by Flyway migration V2__seed_tenants_and_customers.sql
 # But we ensure it exists here in test scope as a safety measure
 echo "  - Ensuring seed data exists for tests..."
-if [ "$SKIP_DB_CLEANUP" = "true" ]; then
-    # Multi-instance: use multi-instance docker-compose
-    DOCKER_COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.multi.yml"
-else
-    DOCKER_COMPOSE_CMD="docker-compose"
-fi
 
 SEED_COUNT=$($DOCKER_COMPOSE_CMD exec -T postgres psql -U takehome1 -d takehome1 -t -c "SELECT COUNT(*) FROM tenants WHERE id IN (1, 2) AND active = true;" 2>/dev/null | tr -d ' ' || echo "0")
 if [ "$SEED_COUNT" != "2" ]; then
@@ -303,13 +199,12 @@ K6_OUTPUT_FILE="/tmp/k6-output-$$.log"
 k6 run "$TEST_SCRIPT" 2>&1 | tee "$K6_OUTPUT_FILE"
 K6_EXIT_CODE=${PIPESTATUS[0]}
 
-# Update test results document ONLY for multi-instance setup
-# K6_TEST_RESULTS.md should only contain results from multi-instance testing
-if [ "$APP_ALREADY_RUNNING" = "true" ]; then
-    RESULTS_FILE="docs/K6_TEST_RESULTS.md"
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+# Update test results document
+# K6_TEST_RESULTS.md contains results from multi-instance testing
+RESULTS_FILE="docs/K6_TEST_RESULTS.md"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-    echo "  - Updating test results document (multi-instance setup detected)"
+echo "  - Updating test results document"
 
     # Remove previous section for this test (if exists)
     if [ -f "$RESULTS_FILE" ]; then
@@ -376,14 +271,11 @@ if [ "$APP_ALREADY_RUNNING" = "true" ]; then
         echo "- **Status:** $threshold_status"
     }
 
-    # Append concise results
-    echo "" >> "$RESULTS_FILE"
-    echo "## $TEST_NAME - $TIMESTAMP" >> "$RESULTS_FILE"
-    extract_metrics "$K6_OUTPUT_FILE" >> "$RESULTS_FILE"
-    echo "" >> "$RESULTS_FILE"
-else
-    echo "  - Skipping test results update (single-instance test - only multi-instance results are documented)"
-fi
+# Append concise results
+echo "" >> "$RESULTS_FILE"
+echo "## $TEST_NAME - $TIMESTAMP" >> "$RESULTS_FILE"
+extract_metrics "$K6_OUTPUT_FILE" >> "$RESULTS_FILE"
+echo "" >> "$RESULTS_FILE"
 
 # Cleanup temp file
 rm -f "$K6_OUTPUT_FILE"

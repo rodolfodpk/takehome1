@@ -1,4 +1,4 @@
-.PHONY: help build test start start-obs stop clean cleanup docker-build docker-build-multi start-multi stop-multi start-multi-and-test check-ports verify-urls
+.PHONY: help build test start start-obs stop clean cleanup docker-build docker-build-multi start-multi stop-multi start-multi-and-test check-ports verify-urls flyway-repair k6-cleanup k6-warmup k6-smoke k6-load k6-stress k6-spike k6-test test-make-commands test-make-commands-smoke test-make-commands-full
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -13,6 +13,45 @@ test: ## Run all tests
 	mvn test
 
 start: ## Start application with full observability stack (Postgres + Redis + Prometheus + Grafana)
+	@echo "🛑 Stopping any running application instances..."
+	@pkill -f "spring-boot:run" 2>/dev/null || true
+	@pkill -f "mvn spring-boot" 2>/dev/null || true
+	@sleep 1
+	@echo "🔍 Checking for Docker containers..."
+	@if docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1"; then \
+		echo ""; \
+		echo "⚠️  Docker containers are already running."; \
+		echo "   Do you want to start fresh? (This will stop all containers and remove volumes)"; \
+		echo "   [y/N]: "; \
+		read -r response; \
+		if [ "$$response" = "y" ] || [ "$$response" = "Y" ]; then \
+			echo "  🧹 Stopping containers and removing volumes..."; \
+			docker-compose down -v > /dev/null 2>&1 || true; \
+			sleep 2; \
+			echo "  ✅ Cleanup complete"; \
+		else \
+			echo "  ℹ️  Continuing with existing containers..."; \
+		fi; \
+	fi
+	@echo "🔍 Checking port 8080..."
+	@if lsof -i :8080 > /dev/null 2>&1; then \
+		echo "  - Port 8080 is in use, freeing it..."; \
+		pkill -f "spring-boot:run" 2>/dev/null || true; \
+		pkill -f "mvn spring-boot" 2>/dev/null || true; \
+		sleep 1; \
+		if lsof -i :8080 > /dev/null 2>&1; then \
+			echo "  - Killing remaining processes on port 8080..."; \
+			lsof -ti:8080 | xargs kill -9 2>/dev/null || true; \
+			sleep 1; \
+		fi; \
+		if lsof -i :8080 > /dev/null 2>&1; then \
+			echo "  ⚠️  Warning: Port 8080 may still be in use. Continuing anyway..."; \
+		else \
+			echo "  ✅ Port 8080 is now free"; \
+		fi; \
+	else \
+		echo "  ✅ Port 8080 is free"; \
+	fi
 	@echo "🚀 Starting infrastructure services..."
 	@docker-compose up -d postgres redis prometheus grafana
 	@echo "Waiting for services to be ready..."
@@ -45,41 +84,21 @@ start: ## Start application with full observability stack (Postgres + Redis + Pr
 start-obs: ## Alias for 'start' - Start application with full observability stack
 	@make start
 
-start-k6: ## Start application with K6 testing profile and observability stack
-	@echo "🚀 Starting infrastructure services..."
-	@docker-compose up -d postgres redis prometheus grafana
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	@echo "  - Verifying PostgreSQL is ready..."
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
-		if docker-compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then \
-			break; \
-		fi; \
-		if [ $$i -eq 10 ]; then \
-			echo "  ⚠️  PostgreSQL may not be ready. Check logs with: docker-compose logs postgres"; \
-		fi; \
-		sleep 1; \
-	done
-	@echo "  - Checking if database user 'takehome1' exists..."
-	@USER_EXISTS=$$(docker-compose exec -T postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='takehome1'" 2>/dev/null | tr -d ' ' || echo ""); \
-	if [ -z "$$USER_EXISTS" ]; then \
-		echo "  - User 'takehome1' does not exist. Creating user and granting permissions..."; \
-		docker-compose exec -T postgres psql -U postgres -c "CREATE USER takehome1 WITH PASSWORD 'takehome1';" 2>/dev/null || true; \
-		docker-compose exec -T postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE takehome1 TO takehome1;" 2>/dev/null || true; \
-		docker-compose exec -T postgres psql -U postgres -d takehome1 -c "GRANT ALL ON SCHEMA public TO takehome1;" 2>/dev/null || true; \
-		echo "  ✅ User 'takehome1' created successfully"; \
-	else \
-		echo "  ✅ User 'takehome1' already exists"; \
-	fi
-	@echo "✅ Infrastructure services are ready!"
-	@echo "Starting Spring Boot application with k6 profile..."
-	@SPRING_PROFILES_ACTIVE=k6 mvn spring-boot:run
 
-start-k6-obs: ## Alias for 'start-k6' - Start with observability stack + K6 profile
-	@make start-k6
 
-stop: ## Stop all Docker containers
-	docker-compose down
+stop: ## Stop Spring Boot application and all Docker containers (stops everything started by make start)
+	@echo "🛑 Stopping Spring Boot application..."
+	@pkill -f "spring-boot:run" 2>/dev/null || true
+	@pkill -f "mvn spring-boot" 2>/dev/null || true
+	@sleep 1
+	@echo "🛑 Stopping Docker containers..."
+	@docker-compose down
+	@echo "✅ All services stopped"
+
+flyway-repair: ## Repair Flyway schema history (fixes checksum mismatches after migration changes)
+	@echo "🔧 Repairing Flyway schema history..."
+	@mvn flyway:repair -Dflyway.url=jdbc:postgresql://localhost:5432/takehome1 -Dflyway.user=takehome1 -Dflyway.password=takehome1
+	@echo "✅ Flyway repair complete!"
 
 check-ports: ## Check all application ports for conflicts
 	@./scripts/check-ports.sh
@@ -157,7 +176,7 @@ start-multi: docker-build-multi ## Start multi-instance stack (2 app instances +
 	@echo "  - Prometheus: http://localhost:9090"
 	@echo ""
 	@echo "💡 Run k6 tests against http://localhost:8080 to test distributed locks!"
-	@echo "   Example: make k6-load-multi"
+	@echo "   Example: make k6-load"
 
 stop-multi: ## Stop multi-instance stack
 	@echo "🛑 Stopping multi-instance stack..."
@@ -170,52 +189,67 @@ docker-run: ## Run Docker container (single instance)
 k6-cleanup: ## Clean database, Redis, and reset circuit breakers before k6 tests
 	@./scripts/k6-cleanup.sh
 
-k6-setup: ## Setup environment for k6 tests (stop, clean volumes, start services, wait for app)
-	@echo "🔧 Setting up k6 test environment..."
-	@echo "  - Stopping and cleaning volumes..."
-	@docker-compose down -v > /dev/null 2>&1 || true
-	@echo "  - Starting PostgreSQL and Redis..."
-	@docker-compose up -d postgres redis
-	@echo "  - Waiting for services to be ready..."
-	@sleep 5
-	@echo "  - Checking PostgreSQL health..."
-	@for i in 1 2 3 4 5; do \
-		if docker-compose exec -T postgres pg_isready -U takehome1 > /dev/null 2>&1; then \
-			break; \
-		fi; \
-		sleep 1; \
-	done
-	@echo "  - Checking Redis health..."
-	@for i in 1 2 3 4 5; do \
-		if docker-compose exec -T redis redis-cli -a takehome1 ping > /dev/null 2>&1; then \
-			break; \
-		fi; \
-		sleep 1; \
-	done
-	@echo "✅ Services are ready!"
-
-k6-warmup: ## Run K6 warm-up test (quick validation - 10 seconds)
+k6-warmup: ## Run K6 warm-up test against multi-instance setup (requires make start-multi first)
 	@echo "🔥 Running k6 warm-up test..."
-	@./scripts/k6-run-test.sh k6/scripts/warmup-test.js
+	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
+	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/warmup-test.js
 
-k6-smoke: ## Run K6 smoke test (10 VUs, 1 minute)
+k6-smoke: ## Run K6 smoke test against multi-instance setup (requires make start-multi first)
 	@echo "💨 Running k6 smoke test..."
-	@./scripts/k6-run-test.sh k6/scripts/smoke-test.js
+	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
+	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/smoke-test.js
 
-k6-load: ## Run K6 load test (250 VUs, 2 minutes, target 2k+ events/sec)
+k6-load: ## Run K6 load test against multi-instance setup - tests distributed locks (requires make start-multi first)
 	@echo "📊 Running k6 load test..."
-	@./scripts/k6-run-test.sh k6/scripts/load-test.js
+	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
+	@echo "  This test will verify distributed locks work correctly across 2 instances"
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
+	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/load-test.js
 
-k6-stress: ## Run K6 stress test (ramp 50→500 VUs, 3 minutes, find breaking point)
+k6-stress: ## Run K6 stress test against multi-instance setup (requires make start-multi first)
 	@echo "💪 Running k6 stress test..."
-	@./scripts/k6-run-test.sh k6/scripts/stress-test.js
+	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
+	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/stress-test.js
 
-k6-spike: ## Run K6 spike test (spike 50→500→50, 2.5 minutes, test circuit breakers)
+k6-spike: ## Run K6 spike test against multi-instance setup (requires make start-multi first)
 	@echo "⚡ Running k6 spike test..."
-	@./scripts/k6-run-test.sh k6/scripts/spike-test.js
+	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
+	@echo "  Note: Circuit breakers are enabled for spike test validation"
+	@echo "  To enable circuit breakers, restart stack with: SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi"
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
+	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/spike-test.js
 
-k6-test: ## Run all K6 tests sequentially (warmup, smoke, load, stress, spike)
-	@echo "🧪 Running all k6 tests..."
+k6-test: ## Run all K6 tests sequentially against multi-instance setup (requires make start-multi first)
+	@echo "🧪 Running all k6 tests against multi-instance setup..."
+	@echo "  Testing distributed locks across 2 app instances..."
+	@if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then \
+		echo "  ❌ Error: Multi-instance stack is not running."; \
+		echo "  Please run 'make start-multi' first."; \
+		exit 1; \
+	fi
 	@echo "🧹 Running initial cleanup before tests..."
 	@make k6-cleanup
 	@echo ""
@@ -230,48 +264,6 @@ k6-test: ## Run all K6 tests sequentially (warmup, smoke, load, stress, spike)
 	@make k6-spike
 	@echo "✅ All k6 tests completed!"
 
-k6-warmup-multi: ## Run K6 warm-up test against multi-instance setup (2 app instances)
-	@echo "🔥 Running k6 warm-up test against multi-instance setup..."
-	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
-	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/warmup-test.js
-
-k6-smoke-multi: ## Run K6 smoke test against multi-instance setup (2 app instances)
-	@echo "💨 Running k6 smoke test against multi-instance setup..."
-	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/smoke-test.js
-
-k6-load-multi: ## Run K6 load test against multi-instance setup (2 app instances) - tests distributed locks
-	@echo "📊 Running k6 load test against multi-instance setup..."
-	@echo "  Note: Ensure multi-instance stack is running (make start-multi)"
-	@echo "  This test will verify distributed locks work correctly across 2 instances"
-	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/load-test.js
-
-k6-stress-multi: ## Run K6 stress test against multi-instance setup (2 app instances)
-	@echo "💪 Running k6 stress test against multi-instance setup..."
-	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/stress-test.js
-
-k6-spike-multi: ## Run K6 spike test against multi-instance setup (2 app instances). Circuit breakers enabled for validation.
-	@echo "⚡ Running k6 spike test against multi-instance setup..."
-	@echo "  Note: Circuit breakers are enabled for spike test validation"
-	@echo "  To enable circuit breakers, restart stack with: SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi"
-	@BASE_URL=http://localhost:8080 ./scripts/k6-run-test.sh k6/scripts/spike-test.js
-
-k6-test-multi: ## Run all K6 tests against multi-instance setup (warmup, smoke, load, stress, spike)
-	@echo "🧪 Running all k6 tests against multi-instance setup..."
-	@echo "  Testing distributed locks across 2 app instances..."
-	@echo "🧹 Running initial cleanup before tests..."
-	@make k6-cleanup
-	@echo ""
-	@make k6-warmup-multi
-	@echo ""
-	@make k6-smoke-multi
-	@echo ""
-	@make k6-load-multi
-	@echo ""
-	@make k6-stress-multi
-	@echo ""
-	@make k6-spike-multi
-	@echo "✅ All k6 tests completed against multi-instance setup!"
-
 start-multi-and-test: ## Start multi-instance stack and run all k6 tests in one command
 	@echo "🚀 Starting multi-instance stack and running all k6 tests..."
 	@echo ""
@@ -280,7 +272,17 @@ start-multi-and-test: ## Start multi-instance stack and run all k6 tests in one 
 	@echo "⏳ Waiting additional time for services to fully stabilize..."
 	@sleep 10
 	@echo ""
-	@make k6-test-multi
+	@make k6-test
 	@echo ""
 	@echo "✅ Multi-instance k6 testing complete!"
 	@echo "💡 Multi-instance stack is still running. Use 'make stop-multi' to stop it."
+
+test-make-commands-smoke: ## Run lightweight smoke test for make commands (fast, for CI)
+	@chmod +x scripts/test-make-commands-smoke.sh
+	@./scripts/test-make-commands-smoke.sh
+
+test-make-commands-full: ## Run full integration test for make commands (slow, for local use)
+	@chmod +x scripts/test-make-commands-full.sh
+	@./scripts/test-make-commands-full.sh
+
+test-make-commands: test-make-commands-smoke ## Alias for smoke test

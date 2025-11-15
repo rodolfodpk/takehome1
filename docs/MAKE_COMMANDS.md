@@ -16,21 +16,27 @@ make help  # Show all available commands with descriptions
 
 | Command | Description |
 |---------|-------------|
-| `make start` | Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana). Runs Spring Boot via Maven. |
+| `make start` | Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana). Runs Spring Boot via Maven. **Automatically kills any running server process.** **Prompts if Docker containers are running** - choose to start fresh (removes volumes) or use existing containers. Automatically frees port 8080 if in use. |
 | `make start-obs` | Alias for `start` - same as above |
-| `make start-k6` | Start application with K6 testing profile and observability stack. Uses `k6` Spring profile (circuit breakers disabled). |
-| `make start-k6-obs` | Alias for `start-k6` - same as above |
+| `make start-multi` | Start multi-instance stack (2 app instances + nginx load balancer + full observability stack). Uses k6 profile by default for load testing. |
+| `make start-multi-and-test` | Start multi-instance stack, then automatically run all k6 tests (warmup, smoke, load, stress, spike). Keeps stack running after tests. |
 
 **Notes:**
+- `make start` **automatically kills any running Spring Boot server process** (no prompt needed)
+- `make start` will prompt you if Docker containers are already running - you can choose to start fresh (removes all volumes) or continue with existing containers
+- `make start-multi-and-test` is a convenience command that starts the multi-instance stack and runs all k6 tests in one go
+- All start commands automatically free port 8080 if it's in use (kills Spring Boot processes first, then any remaining processes)
 - All start commands automatically create the `takehome1` PostgreSQL user if it doesn't exist
 - The observability stack (Prometheus + Grafana) is always started for monitoring
-- Application runs via `mvn spring-boot:run` (not as Docker container) for faster development
+- Single-instance application runs via `mvn spring-boot:run` (not as Docker container) for faster development
+- Multi-instance setup runs applications in Docker containers
 
 ### Stopping the Application
 
 | Command | Description |
 |---------|-------------|
-| `make stop` | Stop all Docker containers (PostgreSQL, Redis, Prometheus, Grafana) |
+| `make stop` | Stop Spring Boot application and all Docker containers (stops everything started by `make start`) |
+| `make stop-multi` | Stop multi-instance stack (stops all containers including app instances, nginx, PostgreSQL, Redis, Prometheus, Grafana) |
 
 **See also:** `make cleanup` for complete cleanup including volumes and port 8080
 
@@ -44,6 +50,19 @@ make help  # Show all available commands with descriptions
 
 **See also:** [Troubleshooting Guide](DEVELOPMENT.md#complete-cleanup-stuck-processes-port-conflicts-fresh-start) for when to use cleanup
 
+## Database Management
+
+| Command | Description |
+|---------|-------------|
+| `make flyway-repair` | Repair Flyway schema history (fixes checksum mismatches after migration changes). Use when you see "Migration checksum mismatch" errors. |
+
+**When to use:**
+- After modifying existing migration files
+- When adding new migrations between existing ones (e.g., adding V2 between V1 and V3)
+- When Flyway reports checksum mismatches on startup
+
+**Alternative:** When running `make start`, choose 'y' when prompted to start clean - this will remove all volumes and start with a fresh database.
+
 ## Testing
 
 ### Unit and Integration Tests
@@ -56,51 +75,35 @@ make help  # Show all available commands with descriptions
 
 **See also:** [Testing Guide](TESTING.md) for detailed test information
 
-### K6 Performance Testing - Single Instance
+### K6 Performance Testing - Multi-Instance Only
 
-All k6 test commands are fully automated - they handle all dependencies (docker-compose, app startup, cleanup) automatically.
-
-| Command | Description |
-|---------|-------------|
-| `make k6-warmup` | Warm-up test (2 VUs, 10 seconds) - quick validation |
-| `make k6-smoke` | Smoke test (10 VUs, 1 minute) |
-| `make k6-load` | Load test (350 VUs, 2 minutes, target 2k+ events/sec) |
-| `make k6-stress` | Stress test (ramp 50→500 VUs, 3 minutes, find breaking point) |
-| `make k6-spike` | Spike test (spike 50→500→50, 2.5 minutes, test circuit breakers) |
-| `make k6-test` | Run all K6 tests sequentially (warmup, smoke, load, stress, spike) |
-
-**What each test does automatically:**
-1. Starts Prometheus and Grafana (if not already running)
-2. Stops and cleans Docker volumes for PostgreSQL and Redis
-3. Starts PostgreSQL and Redis with clean data
-4. Starts application with k6 profile
-5. Cleans database and Redis
-6. Runs the test
-7. Cleans up application process (keeps Grafana/Prometheus running)
-
-**See also:** [K6 Performance Testing Guide](K6_PERFORMANCE.md) for detailed test information
-
-### K6 Performance Testing - Multi-Instance
-
-These tests run against a multi-instance setup (2 app instances behind nginx load balancer) to validate distributed locks.
+All k6 tests run against multi-instance setup (2 app instances + nginx load balancer) to test distributed locks.
 
 **Prerequisites:** Multi-instance stack must be running (`make start-multi`)
 
 | Command | Description |
 |---------|-------------|
-| `make k6-warmup-multi` | Warm-up test against multi-instance setup (2 app instances) |
-| `make k6-smoke-multi` | Smoke test against multi-instance setup (2 app instances) |
-| `make k6-load-multi` | Load test against multi-instance setup (2 app instances) - **Tests distributed locks** |
-| `make k6-stress-multi` | Stress test against multi-instance setup (2 app instances) |
-| `make k6-spike-multi` | Spike test against multi-instance setup (2 app instances). Circuit breakers enabled for validation. |
-| `make k6-test-multi` | Run all K6 tests against multi-instance setup (warmup, smoke, load, stress, spike) |
+| `make start-multi-and-test` | **Recommended:** Start multi-instance stack and run all tests automatically. |
+| `make k6-test` | Run all k6 tests sequentially (warmup, smoke, load, stress, spike). Requires multi-instance stack to be running. |
+| `make k6-warmup` | Warm-up test (2 VUs, 10 seconds) - quick validation. Requires multi-instance stack. |
+| `make k6-smoke` | Smoke test (10 VUs, 1 minute). Requires multi-instance stack. |
+| `make k6-load` | Load test (350 VUs, 2 minutes, target 2k+ events/sec). Tests distributed locks. Requires multi-instance stack. |
+| `make k6-stress` | Stress test (ramp 50→500 VUs, 3 minutes, find breaking point). Requires multi-instance stack. |
+| `make k6-spike` | Spike test (spike 50→500→50, 2.5 minutes, test circuit breakers). Requires multi-instance stack. |
 
-**Notes:**
-- All multi-instance tests automatically target `http://localhost:8080` (nginx load balancer)
-- Tests detect that the application is already running and skip app startup
-- For spike tests with circuit breakers, restart stack with: `SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi`
+**Workflow:**
+1. Start multi-instance stack: `make start-multi`
+2. Run tests: `make k6-test` or individual tests (`make k6-warmup`, etc.)
+3. Stop stack when done: `make stop-multi`
 
-**See also:** [Multi-Instance Setup Guide](MULTI_INSTANCE.md) for complete documentation
+**What each test does:**
+1. Verifies multi-instance stack is running
+2. Ensures Prometheus and Grafana are running
+3. Cleans database and Redis
+4. Runs the test against nginx load balancer (http://localhost:8080)
+5. Updates test results document
+
+**See also:** [K6 Performance Testing Guide](K6_PERFORMANCE.md) and [Multi-Instance Setup Guide](MULTI_INSTANCE.md) for detailed information
 
 ### K6 Utilities
 
@@ -167,6 +170,24 @@ SPRING_PROFILES_ACTIVE=k6,k6-spike make start-multi
 - `check-ports` runs `scripts/check-ports.sh` to detect port conflicts
 - `verify-urls` runs `scripts/verify-urls.sh` to test all documented endpoints
 - `help` uses the Makefile's built-in help system
+
+## Make Commands Testing
+
+| Command | Description |
+|---------|-------------|
+| `make test-make-commands-smoke` | Run lightweight smoke test for make commands (fast, ~10-30s, for CI). Validates Makefile syntax and command existence without execution. |
+| `make test-make-commands-full` | Run full integration test for make commands (slow, ~5-10min, for local use). Tests actual execution of commands including build, Docker, multi-instance, and k6 tests. |
+| `make test-make-commands` | Alias for `test-make-commands-smoke` - same as smoke test |
+
+**When to use:**
+- **Smoke test (CI)**: Runs automatically in CI on every PR. Validates syntax and command existence quickly.
+- **Full test (Local)**: Run locally before committing changes to make commands. Tests actual execution and catches runtime issues.
+
+**What each test validates:**
+- **Smoke test**: Makefile syntax, all documented commands exist, help output is correct
+- **Full test**: Build works, Docker build works, multi-instance start/stop works, k6 commands work, stop commands work
+
+**See also:** These tests are automatically run in CI (smoke test only). Full test should be run locally before committing Makefile changes.
 
 ## Related Documentation
 

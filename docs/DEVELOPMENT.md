@@ -37,22 +37,33 @@ make start
 **Note:** The observability stack is always started with the application for monitoring.
 
 ### 3. Running All K6 Performance Tests
-**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike) with observability stack.
+**Requires Multi-Instance Setup** - All k6 tests run against a multi-instance configuration (2 app instances + nginx load balancer) to test distributed locks.
 
+**Recommended approach:**
 ```bash
-make k6-test
+# Start multi-instance stack and run all tests automatically
+make start-multi-and-test
 ```
+- Starts multi-instance stack (2 app instances + nginx + PostgreSQL + Redis + Prometheus + Grafana)
+- Runs all k6 tests sequentially (warmup, smoke, load, stress, spike)
+- Keeps stack running after tests for monitoring
+- Run `make stop-multi` to stop the stack
 
-- Automatically handles all setup and cleanup
-- Starts Prometheus and Grafana (if not already running)
-- Stops and cleans Docker volumes for PostgreSQL and Redis
-- Starts PostgreSQL and Redis with clean data
-- Starts application with k6 profile
-- Cleans database and Redis
-- Runs all k6 tests sequentially
-- Keeps Grafana and Prometheus running for monitoring
-
-**Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+**Alternative approach:**
+```bash
+# Start multi-instance stack manually, then run tests
+make start-multi
+make k6-test    # Run all tests
+# or run individual tests:
+make k6-warmup  # Quick validation (10 seconds)
+make k6-smoke   # Basic functionality (1 minute)
+make k6-load    # Production load (2 minutes) - tests distributed locks
+make k6-stress  # Find breaking point (3 minutes)
+make k6-spike   # Test circuit breakers (2.5 minutes)
+```
+- All k6 tests require multi-instance stack to be running first
+- Tests verify distributed locks work correctly across 2 instances
+- Run `make stop-multi` to stop the stack when done
 
 **Monitoring:** During k6 tests, you can monitor metrics in Grafana at http://localhost:3000 (admin/admin)
 
@@ -71,8 +82,8 @@ This section covers the most commonly used commands for basic workflows:
 ```bash
 make start          # Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana)
 make start-obs      # Alias for 'start' - same as above
-make start-k6       # Start application with K6 testing profile and observability stack
-make start-k6-obs   # Alias for 'start-k6' - same as above
+make start-multi    # Start multi-instance stack (2 app instances + nginx load balancer)
+make start-multi-and-test  # Start multi-instance stack and run all k6 tests
 ```
 
 **Note:** The observability stack (Prometheus + Grafana) is always started with the application for monitoring. This allows you to monitor metrics, dashboards, and system health in real-time.
@@ -80,13 +91,25 @@ make start-k6-obs   # Alias for 'start-k6' - same as above
 #### Managing the Application
 
 ```bash
-make stop           # Stop all services
-make restart        # Restart application and PostgreSQL
-make logs           # Show application logs
-make health         # Check application health status
+make stop           # Stop Spring Boot application and all Docker containers (stops everything started by make start)
+make stop-multi     # Stop multi-instance stack (stops all containers)
 ```
 
 ### Testing
+
+#### Make Commands Testing
+
+Validate that make commands work correctly:
+
+```bash
+# Fast smoke test (runs in CI, ~10-30 seconds)
+make test-make-commands-smoke
+
+# Full integration test (local use, ~5-10 minutes)
+make test-make-commands-full
+```
+
+**Note:** The smoke test runs automatically in CI on every PR. The full test should be run locally before committing Makefile changes.
 
 #### Unit and Integration Tests
 
@@ -98,49 +121,40 @@ make test           # Run all tests (10 test files, ~10-15 seconds)
 
 #### K6 Performance Testing
 
-All k6 test commands are fully automated - they handle all dependencies (docker-compose, app startup, cleanup) automatically.
+All k6 tests run against multi-instance setup (2 app instances + nginx load balancer) to test distributed locks.
 
-**Single Instance Tests:**
+**Prerequisites:** Multi-instance stack must be running (`make start-multi`)
+
+**Recommended approach:**
 ```bash
-# Individual tests (each handles full setup/teardown automatically)
-make k6-warmup       # Warm-up test (2 VUs, 10 seconds) - quick validation
-make k6-smoke        # Smoke test (10 VUs, 1 minute)
-make k6-load         # Load test (350 VUs, 2 minutes, target 2k+ events/sec)
-make k6-stress       # Stress test (ramp 50→500 VUs, 3 minutes)
-make k6-spike        # Spike test (spike 50→500→50, 2.5 minutes)
-
-# Run all tests sequentially
-make k6-test         # Run all K6 tests (warmup, smoke, load, stress, spike)
+# Start multi-instance stack and run all tests automatically
+make start-multi-and-test
 ```
 
-**Multi-Instance Tests (Distributed Lock Testing):**
+**Alternative approach:**
 ```bash
-# First, start multi-instance stack
+# Start multi-instance stack manually, then run tests
 make start-multi
 
-# Then run tests against 2 instances (tests distributed locks)
-make k6-warmup-multi  # Warm-up test against 2 instances
-make k6-smoke-multi   # Smoke test against 2 instances
-make k6-load-multi    # Load test against 2 instances - **Tests distributed locks**
-make k6-stress-multi  # Stress test against 2 instances
-make k6-spike-multi   # Spike test against 2 instances
+# Individual tests (each requires multi-instance stack to be running)
+make k6-warmup  # Warm-up test (2 VUs, 10 seconds) - quick validation
+make k6-smoke   # Smoke test (10 VUs, 1 minute)
+make k6-load    # Load test (350 VUs, 2 minutes) - **Tests distributed locks**
+make k6-stress  # Stress test (ramp 50→500 VUs, 3 minutes)
+make k6-spike   # Spike test (spike 50→500→50, 2.5 minutes)
 
-# Run all multi-instance tests
-make k6-test-multi    # Run all K6 tests against multi-instance setup
+# Run all tests sequentially
+make k6-test    # Run all K6 tests (warmup, smoke, load, stress, spike)
 ```
 
+**What each test does:**
+1. Verifies multi-instance stack is running
+2. Ensures Prometheus and Grafana are running
+3. Cleans database and Redis
+4. Runs the test against nginx load balancer (http://localhost:8080)
+5. Updates test results document
+
 **See [Multi-Instance Setup Guide](MULTI_INSTANCE.md) for complete documentation.**
-
-**What each test does automatically:**
-1. Stops and cleans Docker volumes (`docker-compose down -v`)
-2. Starts PostgreSQL and Redis
-3. Starts application with k6 profile
-4. Waits for services to be ready
-5. Cleans database and Redis
-6. Runs the test
-7. Cleans up application process
-
-**No manual setup required!** Just run `make k6-smoke` (or any other test) and everything is handled automatically.
 
 ### Observability
 
@@ -229,24 +243,28 @@ Test Categories:
 K6 tests are fully automated - no manual setup required:
 
 ```bash
-# Each test handles all dependencies automatically
+# Recommended: Start multi-instance stack and run all tests in one command
+make start-multi-and-test  # Starts multi-instance stack, runs all tests, keeps stack running
+
+# Or run tests individually (requires multi-instance stack to be running)
 make k6-warmup    # Quick validation (10 seconds)
 make k6-smoke     # Basic functionality (1 minute)
-make k6-load      # Production load (5 minutes, 10k+ events/sec)
-make k6-stress    # Find breaking point (20 minutes)
-make k6-spike     # Test circuit breakers (10 minutes)
+make k6-load      # Production load (2 minutes) - tests distributed locks
+make k6-stress    # Find breaking point (3 minutes)
+make k6-spike     # Test circuit breakers (2.5 minutes)
 
-# Or run all tests sequentially
+# Or run all tests sequentially (requires multi-instance stack to be running)
 make k6-test      # Runs warmup, smoke, load, stress, spike
 ```
 
-Each test automatically:
-- Stops and cleans Docker volumes
-- Starts PostgreSQL and Redis
-- Starts application with k6 profile
+**Prerequisites:** Multi-instance stack must be running (`make start-multi`)
+
+Each test:
+- Verifies multi-instance stack is running
+- Ensures Prometheus and Grafana are running
 - Cleans database and Redis
-- Runs the test
-- Cleans up
+- Runs the test against nginx load balancer (http://localhost:8080)
+- Updates test results document
 
 ### 3. Development Cycle
 
@@ -510,10 +528,8 @@ make cleanup
 
 **After cleanup:**
 ```bash
-# Start fresh
-make start-fresh  # Starts with clean database
-# or
-make start        # Starts normally (will reuse existing volumes if any)
+# Start application (will prompt if containers are running - choose to start clean or use existing)
+make start
 ```
 
 ### K6 Tests Not Running

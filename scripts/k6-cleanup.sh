@@ -1,19 +1,21 @@
 #!/bin/bash
 # Cleanup script for k6 tests
 # Cleans database, Redis, and resets circuit breakers
+# Requires: Multi-instance stack must be running (make start-multi)
 
 set -e
 
 echo "🧹 Cleaning up before k6 test..."
 
-# Detect if multi-instance setup is running
-USE_MULTI_INSTANCE=false
-if docker ps --format "{{.Names}}" | grep -q "takehome1-app-1\|takehome1-app-2"; then
-    USE_MULTI_INSTANCE=true
-    DOCKER_COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.multi.yml"
-else
-    DOCKER_COMPOSE_CMD="docker-compose"
+# Verify multi-instance stack is running
+if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "takehome1-app-1\|takehome1-app-2"; then
+    echo "  ⚠️  Warning: Multi-instance stack is not running."
+    echo "  This script is designed for multi-instance setup."
+    echo "  Please run 'make start-multi' first."
 fi
+
+# Use multi-instance docker-compose command
+DOCKER_COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.multi.yml"
 
 # Check if containers are running
 if ! $DOCKER_COMPOSE_CMD ps postgres | grep -q "Up"; then

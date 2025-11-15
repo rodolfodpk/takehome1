@@ -47,22 +47,33 @@ Access:
 - **Health Check**: http://localhost:8080/actuator/health
 
 ### 3. Running All K6 Performance Tests
-**Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike) with observability stack.
+**Requires Multi-Instance Setup** - All k6 tests run against a multi-instance configuration (2 app instances + nginx load balancer) to test distributed locks.
 
+**Recommended approach:**
 ```bash
-make k6-test
+# Start multi-instance stack and run all tests automatically
+make start-multi-and-test
 ```
+- Starts multi-instance stack (2 app instances + nginx + PostgreSQL + Redis + Prometheus + Grafana)
+- Runs all k6 tests sequentially (warmup, smoke, load, stress, spike)
+- Keeps stack running after tests for monitoring
+- Run `make stop-multi` to stop the stack
 
-This automatically:
-- Starts Prometheus and Grafana (if not already running)
-- Stops and cleans Docker volumes for PostgreSQL and Redis
-- Starts PostgreSQL and Redis with clean data
-- Starts the application with k6 profile
-- Cleans database and Redis
-- Runs all k6 tests sequentially
-- Keeps Grafana and Prometheus running for monitoring
-
-**Note:** Individual k6 tests are also available: `make k6-warmup`, `make k6-smoke`, `make k6-load`, `make k6-stress`, `make k6-spike`
+**Alternative approach:**
+```bash
+# Start multi-instance stack manually, then run tests
+make start-multi
+make k6-test    # Run all tests
+# or run individual tests:
+make k6-warmup  # Quick validation (10 seconds)
+make k6-smoke   # Basic functionality (1 minute)
+make k6-load    # Production load (2 minutes) - tests distributed locks
+make k6-stress  # Find breaking point (3 minutes)
+make k6-spike   # Test circuit breakers (2.5 minutes)
+```
+- All k6 tests require multi-instance stack to be running first
+- Tests verify distributed locks work correctly across 2 instances
+- Run `make stop-multi` to stop the stack when done
 
 **Monitoring:** During k6 tests, you can monitor metrics in Grafana at http://localhost:3000 (admin/admin)
 
@@ -79,20 +90,32 @@ For detailed information, see the [Development Guide](docs/DEVELOPMENT.md).
 
 ```bash
 # Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana)
+# Prompts if containers are running: choose to start clean or use existing containers
+# Automatically frees port 8080 if needed
 make start
 
 # Start multi-instance setup (2 app instances + nginx load balancer)
 make start-multi
 
-# Stop application
+# Stop application (stops Spring Boot process and Docker containers)
 make stop
+
+# Stop multi-instance stack
+make stop-multi
 ```
 
-**Note:** The observability stack (Prometheus + Grafana) is always started with the application for monitoring.
+**Note:** 
+- `make start` automatically kills any running server process (no prompt needed)
+- `make start` will prompt you if Docker containers are already running - choose to start fresh (removes volumes) or use existing containers
+- `make stop` stops both the Spring Boot application and all Docker containers
+- Automatically frees port 8080 if it's in use
+- The observability stack (Prometheus + Grafana) is always started with the application for monitoring
 
 **Multi-Instance Setup:** 
-- Use `make start-multi` to start 2 application instances behind an nginx load balancer, then run `make k6-test-multi` to test distributed locks
-- Or use `make start-multi-and-test` to do both in one command
+- Use `make start-multi` to start 2 application instances behind an nginx load balancer
+- All k6 tests require multi-instance setup - run `make k6-test` or individual tests after `make start-multi`
+- Or use `make start-multi-and-test` to start and run all tests in one command
+- Run `make stop-multi` to stop the multi-instance stack
 - See [Multi-Instance Setup Guide](docs/MULTI_INSTANCE.md) for details
 
 ### Running Tests
