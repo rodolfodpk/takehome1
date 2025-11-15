@@ -6,7 +6,6 @@ import com.rdpk.metering.domain.UsageEvent
 import io.micrometer.core.instrument.Timer
 import org.redisson.api.RedissonReactiveClient
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
 import java.time.Duration
@@ -19,12 +18,27 @@ import java.time.Duration
 class RedisStateService(
     private val redissonReactive: RedissonReactiveClient,
     private val resilienceService: ResilienceService,
-    private val eventMetrics: EventMetrics,
-    @Value("\${metering.redis.counter-ttl-seconds:3600}")
-    private val counterTtlSeconds: Long
+    private val eventMetrics: EventMetrics
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
+    
+    private data class CounterKeys(
+        val tokens: String,
+        val calls: String,
+        val inputTokens: String,
+        val outputTokens: String
+    )
+    
+    private fun getCounterKeys(tenantId: Long, customerId: Long): CounterKeys {
+        val prefix = "metering:tenant:$tenantId:customer:$customerId"
+        return CounterKeys(
+            tokens = "$prefix:tokens",
+            calls = "$prefix:calls",
+            inputTokens = "$prefix:inputTokens",
+            outputTokens = "$prefix:outputTokens"
+        )
+    }
     
     /**
      * Update Redis counters for an event
@@ -34,11 +48,7 @@ class RedisStateService(
         val tenantId = event.tenantId
         val customerId = event.customerId
         
-        // Counter keys
-        val tokensKey = "metering:tenant:$tenantId:customer:$customerId:tokens"
-        val callsKey = "metering:tenant:$tenantId:customer:$customerId:calls"
-        val inputTokensKey = "metering:tenant:$tenantId:customer:$customerId:inputTokens"
-        val outputTokensKey = "metering:tenant:$tenantId:customer:$customerId:outputTokens"
+        val keys = getCounterKeys(tenantId, customerId)
         
         // Extract token values from data JSONB
         // inputTokens and outputTokens are required (validated at DTO level)
@@ -50,10 +60,10 @@ class RedisStateService(
         val batch = redissonReactive.createBatch()
         
         // Update counters atomically
-        batch.getAtomicLong(tokensKey).addAndGet(tokens.toLong())
-        batch.getAtomicLong(callsKey).addAndGet(1L)
-        batch.getAtomicLong(inputTokensKey).addAndGet(inputTokens.toLong())
-        batch.getAtomicLong(outputTokensKey).addAndGet(outputTokens.toLong())
+        batch.getAtomicLong(keys.tokens).addAndGet(tokens.toLong())
+        batch.getAtomicLong(keys.calls).addAndGet(1L)
+        batch.getAtomicLong(keys.inputTokens).addAndGet(inputTokens.toLong())
+        batch.getAtomicLong(keys.outputTokens).addAndGet(outputTokens.toLong())
         
         val sample = Timer.start()
         
@@ -74,17 +84,14 @@ class RedisStateService(
      * Get current counters for a customer
      */
     fun getCounters(tenantId: Long, customerId: Long): Mono<CustomerCounters> {
-        val tokensKey = "metering:tenant:$tenantId:customer:$customerId:tokens"
-        val callsKey = "metering:tenant:$tenantId:customer:$customerId:calls"
-        val inputTokensKey = "metering:tenant:$tenantId:customer:$customerId:inputTokens"
-        val outputTokensKey = "metering:tenant:$tenantId:customer:$customerId:outputTokens"
+        val keys = getCounterKeys(tenantId, customerId)
         
         return resilienceService.applyRedisResilience(
             Mono.zip(
-                redissonReactive.getAtomicLong(tokensKey).get(),
-                redissonReactive.getAtomicLong(callsKey).get(),
-                redissonReactive.getAtomicLong(inputTokensKey).get(),
-                redissonReactive.getAtomicLong(outputTokensKey).get()
+                redissonReactive.getAtomicLong(keys.tokens).get(),
+                redissonReactive.getAtomicLong(keys.calls).get(),
+                redissonReactive.getAtomicLong(keys.inputTokens).get(),
+                redissonReactive.getAtomicLong(keys.outputTokens).get()
             ).map { tuple ->
                 CustomerCounters(
                     tokens = tuple.t1,
@@ -100,16 +107,13 @@ class RedisStateService(
      * Clear counters for a customer (after aggregation)
      */
     fun clearCounters(tenantId: Long, customerId: Long): Mono<Void> {
-        val tokensKey = "metering:tenant:$tenantId:customer:$customerId:tokens"
-        val callsKey = "metering:tenant:$tenantId:customer:$customerId:calls"
-        val inputTokensKey = "metering:tenant:$tenantId:customer:$customerId:inputTokens"
-        val outputTokensKey = "metering:tenant:$tenantId:customer:$customerId:outputTokens"
+        val keys = getCounterKeys(tenantId, customerId)
         
         val batch = redissonReactive.createBatch()
-        batch.getAtomicLong(tokensKey).delete()
-        batch.getAtomicLong(callsKey).delete()
-        batch.getAtomicLong(inputTokensKey).delete()
-        batch.getAtomicLong(outputTokensKey).delete()
+        batch.getAtomicLong(keys.tokens).delete()
+        batch.getAtomicLong(keys.calls).delete()
+        batch.getAtomicLong(keys.inputTokens).delete()
+        batch.getAtomicLong(keys.outputTokens).delete()
         
         return resilienceService.applyRedisResilience(
             batch.execute().then()

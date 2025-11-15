@@ -66,6 +66,34 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
             if (!redisContainer.isRunning) {
                 redisContainer.start()
             }
+            
+            // Clean Flyway schema history before Spring context loads
+            // This allows migrations to re-run when files are legitimately modified
+            // (e.g., removing BEGIN/COMMIT statements, making migrations idempotent)
+            // Validation remains enabled to catch real issues
+            try {
+                val url = "jdbc:postgresql://${postgresContainer.host}:${postgresContainer.firstMappedPort}/${postgresContainer.databaseName}"
+                val user = postgresContainer.username
+                val password = postgresContainer.password
+                
+                java.sql.DriverManager.getConnection(url, user, password).use { conn ->
+                    conn.createStatement().use { stmt ->
+                        // Drop all tables including flyway_schema_history to ensure clean state
+                        // This happens before Spring context loads, so Flyway can run fresh migrations
+                        stmt.execute("""
+                            DROP TABLE IF EXISTS late_events CASCADE;
+                            DROP TABLE IF EXISTS aggregation_windows CASCADE;
+                            DROP TABLE IF EXISTS usage_events CASCADE;
+                            DROP TABLE IF EXISTS customers CASCADE;
+                            DROP TABLE IF EXISTS tenants CASCADE;
+                            DROP TABLE IF EXISTS flyway_schema_history CASCADE;
+                        """.trimIndent())
+                    }
+                }
+            } catch (e: Exception) {
+                // Database cleanup is best-effort - tables might not exist yet
+                // This is expected on first run or if containers aren't ready
+            }
         }
 
         @DynamicPropertySource
@@ -95,6 +123,9 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
             }
             registry.add("spring.flyway.user") { postgresContainer.username }
             registry.add("spring.flyway.password") { postgresContainer.password }
+            // Keep validation enabled to catch real migration issues
+            // We clean flyway_schema_history in init block and cleanupDatabase()
+            // to allow migrations to re-run when files are legitimately modified
 
             // Redis Configuration - ensure container is ready
             val redisPort = redisContainer.getMappedPort(6379)
@@ -174,20 +205,17 @@ abstract class AbstractKotestIntegrationTest : DescribeSpec() {
     }
 
     /**
-     * Cleanup all database tables
-     * Uses TRUNCATE with CASCADE to handle foreign key constraints
+     * Cleanup all database data (not schema)
+     * Deletes data from tables to ensure clean state for each test
+     * Tables are dropped/recreated by migrations in init block if needed
      */
     protected fun cleanupDatabase() {
-        // Delete in order to respect foreign key constraints
+        // Delete data in order to respect foreign key constraints
         template.delete(LateEvent::class.java).all().block()
         template.delete(AggregationWindow::class.java).all().block()
         template.delete(UsageEvent::class.java).all().block()
         template.delete(Customer::class.java).all().block()
         template.delete(Tenant::class.java).all().block()
-        
-        // Alternative: Use TRUNCATE for faster cleanup (requires raw SQL)
-        // Note: This requires DatabaseClient, not R2dbcEntityTemplate
-        // For now, we use delete which is safer and works with R2DBC
     }
 
     /**

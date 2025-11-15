@@ -1,4 +1,4 @@
-# Real-Time API Metering & Aggregation Engine
+test# Real-Time API Metering & Aggregation Engine
 
 ![CI](https://github.com/rodolfodpk/takehome1/workflows/CI/badge.svg)
 ![codecov](https://codecov.io/gh/rodolfodpk/takehome1/branch/main/graph/badge.svg)
@@ -41,9 +41,10 @@ This automatically:
 - Runs the Spring Boot application
 
 Access:
-- **Application**: http://localhost:8080
 - **Grafana**: http://localhost:3000 (admin/admin)
 - **Prometheus**: http://localhost:9090
+- **Swagger UI**: http://localhost:8080/swagger-ui.html
+- **Health Check**: http://localhost:8080/actuator/health
 
 ### 3. Running All K6 Performance Tests
 **Requires Docker Compose** - Runs all k6 performance tests sequentially (warmup, smoke, load, stress, spike) with observability stack.
@@ -80,11 +81,19 @@ For detailed information, see the [Development Guide](docs/DEVELOPMENT.md).
 # Start application with full observability stack (PostgreSQL + Redis + Prometheus + Grafana)
 make start
 
+# Start multi-instance setup (2 app instances + nginx load balancer)
+make start-multi
+
 # Stop application
 make stop
 ```
 
 **Note:** The observability stack (Prometheus + Grafana) is always started with the application for monitoring.
+
+**Multi-Instance Setup:** 
+- Use `make start-multi` to start 2 application instances behind an nginx load balancer, then run `make k6-test-multi` to test distributed locks
+- Or use `make start-multi-and-test` to do both in one command
+- See [Multi-Instance Setup Guide](docs/MULTI_INSTANCE.md) for details
 
 ### Running Tests
 
@@ -95,7 +104,6 @@ make test
 
 ### Available URLs
 
-- **Application**: http://localhost:8080
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
 - **OpenAPI Spec**: http://localhost:8080/v3/api-docs
 - **Health Check**: http://localhost:8080/actuator/health

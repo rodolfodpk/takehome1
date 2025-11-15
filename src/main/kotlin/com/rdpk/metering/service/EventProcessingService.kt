@@ -1,6 +1,5 @@
 package com.rdpk.metering.service
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.dto.EventMetadata
 import com.rdpk.metering.dto.UsageEventRequest
@@ -28,7 +27,6 @@ class EventProcessingService(
     private val redisEventStorageService: RedisEventStorageService,
     private val redisStateService: RedisStateService,
     private val lateEventService: LateEventService,
-    private val objectMapper: ObjectMapper,
     private val resilienceService: ResilienceService,
     private val eventMetrics: EventMetrics,
     private val clock: Clock

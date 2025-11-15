@@ -32,6 +32,9 @@ abstract class AbstractIntegrationTest {
             }
             registry.add("spring.flyway.user") { postgresContainer.username }
             registry.add("spring.flyway.password") { postgresContainer.password }
+            // Keep validation enabled to catch real migration issues
+            // We ensure clean database state by dropping tables in cleanup methods
+            // This allows migrations to re-run when files are legitimately modified
 
             // Redis Configuration (using Testcontainers Redis)
             registry.add("spring.data.redis.host") { redisContainer.host }

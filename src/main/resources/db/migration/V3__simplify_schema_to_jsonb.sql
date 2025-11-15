@@ -1,4 +1,4 @@
--- Migration V9: Simplify schema to JSONB pattern
+-- Migration V3: Simplify schema to JSONB pattern
 -- 
 -- This migration consolidates non-queried columns into JSONB for:
 -- 1. usage_events: Move endpoint, tokens, model, latency_ms, metadata -> data JSONB
@@ -8,8 +8,6 @@
 -- - Keep only queried/FK columns as regular columns (tenant_id, customer_id, timestamp, event_id, window_start, window_end)
 -- - Move all other fields to JSONB for flexibility and to eliminate boilerplate code
 -- - Use GIN indexes for efficient JSONB queries when needed
---
--- Rollback: If needed, can re-add columns and migrate data back (not recommended after deployment)
 
 -- ============================================================================
 -- 1. usage_events table migration
@@ -31,15 +29,13 @@ SET data = jsonb_build_object(
 WHERE data = '{}'::jsonb;  -- Only update if data is still default (idempotent)
 
 -- Step 3: Drop old columns (after data migration verified)
+-- Note: Indexes on these columns are automatically dropped by PostgreSQL
 ALTER TABLE usage_events 
 DROP COLUMN IF EXISTS endpoint,
 DROP COLUMN IF EXISTS tokens,
 DROP COLUMN IF EXISTS model,
 DROP COLUMN IF EXISTS latency_ms,
 DROP COLUMN IF EXISTS metadata;
-
--- Step 4: Drop unused index on endpoint (no longer a column)
-DROP INDEX IF EXISTS idx_usage_events_endpoint;
 
 -- Step 5: Create GIN index on data column for efficient JSONB queries
 CREATE INDEX IF NOT EXISTS idx_usage_events_data_gin ON usage_events USING GIN (data);
@@ -63,19 +59,4 @@ ALTER TABLE aggregation_windows
 DROP COLUMN IF EXISTS total_calls,
 DROP COLUMN IF EXISTS total_tokens,
 DROP COLUMN IF EXISTS avg_latency_ms;
-
--- ============================================================================
--- Verification queries (commented out - run manually to verify)
--- ============================================================================
-
--- Verify usage_events migration:
--- SELECT COUNT(*) FROM usage_events WHERE data IS NULL;  -- Should be 0
--- SELECT data->>'endpoint' as endpoint, data->>'tokens' as tokens FROM usage_events LIMIT 5;
-
--- Verify aggregation_windows migration:
--- SELECT aggregation_data->>'totalCalls' as totalCalls, aggregation_data->>'totalTokens' as totalTokens 
--- FROM aggregation_windows LIMIT 5;
-
--- Verify indexes:
--- \d usage_events  -- Should show idx_usage_events_data_gin
 

@@ -8,6 +8,7 @@ import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.repository.AggregationWindowRepository
 import com.rdpk.metering.repository.LateEventRepository
 import com.rdpk.metering.repository.UsageEventRepository
+import com.rdpk.metering.util.truncateToWindow
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -78,7 +79,7 @@ class LateEventProcessingService(
         )
             .flatMap { savedEvent ->
                 // Determine which window this event belongs to
-                val windowStart = truncateToWindow(lateEvent.originalTimestamp)
+                val windowStart = lateEvent.originalTimestamp.truncateToWindow(windowDurationSeconds)
                 val windowEnd = windowStart.plusSeconds(windowDurationSeconds)
                 
                 // Check if aggregation window exists with resilience
@@ -99,6 +100,22 @@ class LateEventProcessingService(
                     }
             }
             .then(deleteLateEvent(lateEvent))
+    }
+    
+    /**
+     * Save aggregation window to database
+     */
+    private fun saveAggregationWindow(window: AggregationWindow): Mono<AggregationWindow> {
+        val now = LocalDateTime.now(clock)
+        return aggregationWindowRepository.saveWithJsonb(
+            window.tenantId,
+            window.customerId,
+            window.windowStart,
+            window.windowEnd,
+            window.aggregationData,
+            window.created ?: now,
+            window.updated ?: now
+        )
     }
     
     private fun updateExistingAggregation(
@@ -139,15 +156,7 @@ class LateEventProcessingService(
                             }
                             .flatMap { updatedWindow ->
                                 resilienceService.applyPostgresResilience(
-                                    aggregationWindowRepository.saveWithJsonb(
-                                        updatedWindow.tenantId,
-                                        updatedWindow.customerId,
-                                        updatedWindow.windowStart,
-                                        updatedWindow.windowEnd,
-                                        updatedWindow.aggregationData,
-                                        updatedWindow.created ?: LocalDateTime.now(clock),
-                                        updatedWindow.updated ?: LocalDateTime.now(clock)
-                                    )
+                                    saveAggregationWindow(updatedWindow)
                                 )
                                     .doOnSuccess {
                                         log.info("Updated aggregation window for late event: ${lateEvent.eventId}")
@@ -194,15 +203,7 @@ class LateEventProcessingService(
                     }
                     .flatMap { newWindow ->
                         resilienceService.applyPostgresResilience(
-                            aggregationWindowRepository.saveWithJsonb(
-                                newWindow.tenantId,
-                                newWindow.customerId,
-                                newWindow.windowStart,
-                                newWindow.windowEnd,
-                                newWindow.aggregationData,
-                                newWindow.created ?: LocalDateTime.now(clock),
-                                newWindow.updated ?: LocalDateTime.now(clock)
-                            )
+                            saveAggregationWindow(newWindow)
                         )
                             .doOnSuccess {
                                 log.info("Created aggregation window for late event: ${lateEvent.eventId}")
@@ -222,10 +223,5 @@ class LateEventProcessingService(
             }
     }
     
-    private fun truncateToWindow(timestamp: Instant): Instant {
-        val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
-        return Instant.ofEpochSecond(windowStartSeconds)
-    }
 }
 

@@ -35,7 +35,6 @@ make metrics
 
 ### Available Endpoints
 
-- **Application**: http://localhost:8080
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
 - **Health Check**: http://localhost:8080/actuator/health
 - **Prometheus Metrics**: http://localhost:8080/actuator/prometheus

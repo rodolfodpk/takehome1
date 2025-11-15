@@ -13,6 +13,7 @@ import com.rdpk.metering.repository.TenantRepository
 import com.rdpk.metering.repository.UsageEventRepository
 import com.rdpk.metering.service.LateEventProcessingService
 import com.rdpk.metering.service.LateEventService
+import com.rdpk.metering.util.truncateToWindow
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -61,7 +62,7 @@ class LateEventProcessingServiceIntegrationTest : AbstractKotestIntegrationTest(
                 // Window is 30 seconds, so we need event to be > 1 minute late to be stored
                 // Calculate window start using same truncation logic as LateEventProcessingService
                 val eventTimestamp = clock.instant().minusSeconds(120).plusSeconds(10) // Event timestamp
-                val windowStart = truncateToWindow(eventTimestamp) // Truncate to 30-second boundary
+                val windowStart = eventTimestamp.truncateToWindow(30L) // Truncate to 30-second boundary
                 val receivedTimestamp = clock.instant() // Received now (2 minutes late)
 
                 // Create event and use LateEventService to properly serialize it
@@ -117,7 +118,7 @@ class LateEventProcessingServiceIntegrationTest : AbstractKotestIntegrationTest(
 
                 // Calculate window start using same truncation logic
                 val eventTimestampForWindow = clock.instant().minusSeconds(120).plusSeconds(5)
-                val windowStart = truncateToWindow(eventTimestampForWindow)
+                val windowStart = eventTimestampForWindow.truncateToWindow(30L)
                 val windowEnd = windowStart.plusSeconds(30)
 
                 // Create an existing aggregation window
@@ -207,8 +208,8 @@ class LateEventProcessingServiceIntegrationTest : AbstractKotestIntegrationTest(
                 // Create two late events for different windows
                 val eventTimestamp1 = clock.instant().minusSeconds(180).plusSeconds(10)
                 val eventTimestamp2 = clock.instant().minusSeconds(150).plusSeconds(10)
-                val windowStart1 = truncateToWindow(eventTimestamp1)
-                val windowStart2 = truncateToWindow(eventTimestamp2)
+                val windowStart1 = eventTimestamp1.truncateToWindow(30L)
+                val windowStart2 = eventTimestamp2.truncateToWindow(30L)
 
                 val event1 = UsageEvent(
                     eventId = "late-batch-1",
@@ -357,15 +358,5 @@ class LateEventProcessingServiceIntegrationTest : AbstractKotestIntegrationTest(
         return customerRepository.save(customer).block()!!
     }
     
-    /**
-     * Truncate timestamp to window boundary (same logic as LateEventProcessingService)
-     * Window duration is 30 seconds by default
-     */
-    private fun truncateToWindow(timestamp: Instant): Instant {
-        val windowDurationSeconds = 30L
-        val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
-        return Instant.ofEpochSecond(windowStartSeconds)
-    }
 }
 

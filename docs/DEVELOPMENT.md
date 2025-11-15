@@ -29,7 +29,8 @@ make start
 - Waits for services to be ready
 - Runs the Spring Boot application
 - Access:
-  - **Application**: http://localhost:8080
+  - **Swagger UI**: http://localhost:8080/swagger-ui.html
+  - **Health Check**: http://localhost:8080/actuator/health
   - **Grafana**: http://localhost:3000 (admin/admin)
   - **Prometheus**: http://localhost:9090
 
@@ -589,7 +590,6 @@ git push origin main
 
 When application is running:
 
-- **Application**: http://localhost:8080
 - **Swagger UI**: http://localhost:8080/swagger-ui.html
 - **OpenAPI Spec**: http://localhost:8080/v3/api-docs
 - **Health Check**: http://localhost:8080/actuator/health

@@ -6,14 +6,18 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.bind.support.WebExchangeBindException
+import org.springframework.web.reactive.resource.NoResourceFoundException
 import org.springframework.web.server.ServerWebInputException
 import reactor.core.publisher.Mono
 
 /**
  * Global exception handler for REST API
  * Provides consistent error responses
+ *
+ * Note: Only handles exceptions from our API controllers (com.rdpk.metering.controller)
+ * This excludes Swagger UI, Actuator, and other Spring-managed endpoints
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = ["com.rdpk.metering.controller"])
 class GlobalExceptionHandler {
     
     private val log = LoggerFactory.getLogger(javaClass)
@@ -66,6 +70,12 @@ class GlobalExceptionHandler {
     
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception): Mono<ResponseEntity<ErrorResponse>> {
+        // Don't handle Spring resource exceptions (favicon.ico, static resources, etc.)
+        // These should be handled by Spring's default resource handling
+        if (ex is NoResourceFoundException) {
+            throw ex
+        }
+        
         log.error("Unexpected error", ex)
         
         return Mono.just(

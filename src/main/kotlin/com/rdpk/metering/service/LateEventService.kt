@@ -6,6 +6,7 @@ import com.rdpk.metering.config.ResilienceService
 import com.rdpk.metering.domain.LateEvent
 import com.rdpk.metering.domain.UsageEvent
 import com.rdpk.metering.repository.LateEventRepository
+import com.rdpk.metering.util.truncateToWindow
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -41,8 +42,8 @@ class LateEventService(
     fun checkAndHandleLateEvent(event: UsageEvent, currentTime: Instant? = null): Mono<Boolean> {
         val now = currentTime ?: clock.instant()
         val eventTimestamp = event.timestamp
-        val currentWindowStart = truncateToWindow(now)
-        val eventWindowStart = truncateToWindow(eventTimestamp)
+        val currentWindowStart = now.truncateToWindow(windowDurationSeconds)
+        val eventWindowStart = eventTimestamp.truncateToWindow(windowDurationSeconds)
         
         // Check if event is for a previous window
         if (eventWindowStart.isBefore(currentWindowStart)) {
@@ -123,15 +124,6 @@ class LateEventService(
             log.error("Error serializing event for late event storage: ${event.eventId}", e)
             throw e // Don't return "{}" - fail fast so we can debug
         }
-    }
-    
-    /**
-     * Truncate timestamp to window boundary
-     */
-    private fun truncateToWindow(timestamp: Instant): Instant {
-        val epochSeconds = timestamp.epochSecond
-        val windowStartSeconds = (epochSeconds / windowDurationSeconds) * windowDurationSeconds
-        return Instant.ofEpochSecond(windowStartSeconds)
     }
     
     /**

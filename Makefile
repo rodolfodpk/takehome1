@@ -1,4 +1,4 @@
-.PHONY: help build test start start-obs stop clean cleanup docker-build docker-build-multi start-multi stop-multi check-ports verify-urls
+.PHONY: help build test start start-obs stop clean cleanup docker-build docker-build-multi start-multi stop-multi start-multi-and-test check-ports verify-urls
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -265,3 +265,16 @@ k6-test-multi: ## Run all K6 tests against multi-instance setup (warmup, smoke, 
 	@echo ""
 	@make k6-spike-multi
 	@echo "✅ All k6 tests completed against multi-instance setup!"
+
+start-multi-and-test: ## Start multi-instance stack and run all k6 tests in one command
+	@echo "🚀 Starting multi-instance stack and running all k6 tests..."
+	@echo ""
+	@make start-multi
+	@echo ""
+	@echo "⏳ Waiting additional time for services to fully stabilize..."
+	@sleep 10
+	@echo ""
+	@make k6-test-multi
+	@echo ""
+	@echo "✅ Multi-instance k6 testing complete!"
+	@echo "💡 Multi-instance stack is still running. Use 'make stop-multi' to stop it."

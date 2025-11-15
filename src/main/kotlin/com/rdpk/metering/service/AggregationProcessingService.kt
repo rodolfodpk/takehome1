@@ -145,6 +145,22 @@ class AggregationProcessingService(
     }
     
     /**
+     * Save aggregation window to database
+     */
+    private fun saveAggregationWindow(window: AggregationWindow): Mono<AggregationWindow> {
+        val now = LocalDateTime.now(clock)
+        return aggregationWindowRepository.saveWithJsonb(
+            window.tenantId,
+            window.customerId,
+            window.windowStart,
+            window.windowEnd,
+            window.aggregationData,
+            window.created ?: now,
+            window.updated ?: now
+        )
+    }
+    
+    /**
      * Persist aggregation window to Postgres and clear Redis counters
      */
     private fun persistWindow(
@@ -154,15 +170,7 @@ class AggregationProcessingService(
         sample: Timer.Sample
     ): Mono<Void> {
         return resilienceService.applyPostgresResilience(
-            aggregationWindowRepository.saveWithJsonb(
-                aggregationWindow.tenantId,
-                aggregationWindow.customerId,
-                aggregationWindow.windowStart,
-                aggregationWindow.windowEnd,
-                aggregationWindow.aggregationData,
-                aggregationWindow.created ?: LocalDateTime.now(clock),
-                aggregationWindow.updated ?: LocalDateTime.now(clock)
-            )
+            saveAggregationWindow(aggregationWindow)
                 .then(redisStateService.clearCounters(tenantId, customerId))
         )
             .doOnSuccess {

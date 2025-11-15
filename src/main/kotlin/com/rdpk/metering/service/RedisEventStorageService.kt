@@ -7,14 +7,13 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.core.instrument.Timer
 import org.redisson.api.RedissonReactiveClient
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
 /**
  * Service for storing events in Redis (hot path)
- * Events are stored immediately with TTL for durability
+ * Events are stored immediately for durability
  * Background job batches these to Postgres (cold path)
  */
 @Service
@@ -22,9 +21,7 @@ class RedisEventStorageService(
     private val redissonReactive: RedissonReactiveClient,
     private val objectMapper: ObjectMapper,
     private val resilienceService: ResilienceService,
-    private val eventMetrics: EventMetrics,
-    @Value("\${metering.redis.event-ttl-hours:1}")
-    private val eventTtlHours: Long
+    private val eventMetrics: EventMetrics
 ) {
     
     private val log = LoggerFactory.getLogger(javaClass)
