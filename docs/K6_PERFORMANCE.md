@@ -18,14 +18,14 @@ Comprehensive performance testing suite for the Real-Time API Metering & Aggrega
 
 **Key Highlights:**
 - ✅ **Zero failures** across all test scenarios
-- ✅ **High throughput**: Sustained 4,500+ requests/second across 2 instances
+- ✅ **High throughput**: Sustained 5,000+ requests/second under load, with peaks up to 13,000+ requests/second under stress across 2 instances
 - ✅ **Low latency**: p95 < 260ms even under maximum stress (500 VUs)
 - ✅ **Distributed locks validated**: All tests run against 2 instances via nginx load balancer
 - ✅ **Circuit breakers disabled**: Pure performance metrics without resilience overhead
 
 ## Overview
 
-K6 is used to validate system behavior under various load conditions and verify Resilience4j circuit breakers, retries, and timeouts. All tests target the event ingestion API (`POST /api/v1/events`) which handles 2,000+ events/second per instance (tested up to 3,700+ events/second under stress).
+K6 is used to validate system behavior under various load conditions and verify Resilience4j circuit breakers, retries, and timeouts. All tests target the event ingestion API (`POST /api/v1/events`) which handles 2,500+ events/second per instance under sustained load, with peaks up to 6,500+ events/second per instance under stress.
 
 **Test Environment:** All results are from multi-instance setup (2 app instances behind nginx load balancer) to validate distributed locks and multi-instance behavior.
 
