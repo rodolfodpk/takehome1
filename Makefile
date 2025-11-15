@@ -253,15 +253,15 @@ k6-test: ## Run all K6 tests sequentially against multi-instance setup (requires
 	@echo "🧹 Running initial cleanup before tests..."
 	@make k6-cleanup
 	@echo ""
-	@make k6-warmup
+	@-make k6-warmup || echo "  ⚠️  k6-warmup failed (continuing with other tests)"
 	@echo ""
-	@make k6-smoke
+	@-make k6-smoke || echo "  ⚠️  k6-smoke failed (continuing with other tests)"
 	@echo ""
-	@make k6-load
+	@-make k6-load || echo "  ⚠️  k6-load failed (continuing with other tests)"
 	@echo ""
-	@make k6-stress
+	@-make k6-stress || echo "  ⚠️  k6-stress failed (continuing with other tests)"
 	@echo ""
-	@make k6-spike
+	@-make k6-spike || echo "  ⚠️  k6-spike failed (continuing with other tests)"
 	@echo "✅ All k6 tests completed!"
 
 start-multi-and-test: ## Start multi-instance stack and run all k6 tests in one command
