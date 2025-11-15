@@ -162,8 +162,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Dashboards](docs/DASHBOARDS.md)** - Grafana dashboard documentation and usage
 
 ### Performance
-- **[K6 Performance Testing](docs/K6_PERFORMANCE.md)** - Comprehensive k6 testing guide with scenarios and thresholds
-- **[K6 Test Results](docs/K6_TEST_RESULTS.md)** - Latest k6 performance test results
+- **[K6 Performance Testing](docs/K6_PERFORMANCE.md)** - Comprehensive k6 testing guide with scenarios, thresholds, and test results summary
 - **[Multi-Instance Setup](docs/MULTI_INSTANCE.md)** - Multi-instance setup and distributed lock testing guide
 
 ## Architecture

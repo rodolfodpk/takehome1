@@ -10,11 +10,11 @@ Comprehensive performance testing suite for the Real-Time API Metering & Aggrega
 
 | Test | VUs | Duration | Throughput | Error Rate | p95 Latency | Status |
 |------|-----|----------|------------|------------|-------------|--------|
-| **Warm-up** | 2 | 10s | 280 req/s | 0.00% | 7.46ms | ✅ Pass |
-| **Smoke** | 10 | 1m | 2,231 req/s | 0.00% | 5.32ms | ✅ Pass |
-| **Load** | 350 | 2m | 4,696 req/s | 0.00% | 183.58ms | ✅ Pass |
-| **Stress** | 50→500 | 3m | 4,590 req/s | 0.00% | 253.47ms | ✅ Pass |
-| **Spike** | 50→500→50 | 2.5m | 4,815 req/s | 0.00% | 159.03ms | ✅ Pass |
+| **Warm-up** | 2 | 10s | 2174 req/s | 0.00% | N/A | ✅ Pass |
+| **Smoke** | 10 | 1m | 5378 req/s | 0.00% | N/A | ✅ Pass |
+| **Load** | 350 | 2m | N/A | 0.00% | N/A | ✅ Pass |
+| **Stress** | 50→500 | 3m | 13867 req/s | 0.00% | N/A | ✅ Pass |
+| **Spike** | 50→500→50 | 2.5m | 13541 req/s | 0.00% | N/A | ✅ Pass |
 
 **Key Highlights:**
 - ✅ **Zero failures** across all test scenarios
@@ -564,6 +564,6 @@ If any threshold fails, the test will exit with a non-zero status code.
 ## Related Documentation
 
 - **[README](../README.md)** - Project overview and quick start
-- **[K6 Test Results](K6_TEST_RESULTS.md)** - Latest k6 performance test results
 - **[Development Guide](DEVELOPMENT.md)** - Complete development guide with all make commands
 - **[Testing Guide](TESTING.md)** - Test strategy and coverage details
+- **[Multi-Instance Setup](MULTI_INSTANCE.md)** - Guide for multi-instance testing

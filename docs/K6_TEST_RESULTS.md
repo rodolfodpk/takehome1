@@ -1,8 +1,16 @@
-# k6 Test Results
+# ⚠️ DEPRECATED
 
-This file contains concise results from k6 performance tests. Results are automatically updated after each test run.
+This file is no longer updated. Test results are now in the summary table in [K6_PERFORMANCE.md](K6_PERFORMANCE.md).
 
-**⚠️ Important:** All test results in this file are from **multi-instance setup** (2 app instances behind nginx load balancer) testing distributed locks across instances. This setup validates that distributed locks work correctly and prevents duplicate processing across multiple service instances.
+See the "Test Results Summary" section in K6_PERFORMANCE.md for the latest results.
+
+---
+
+# k6 Test Results (Historical)
+
+This file previously contained results from k6 performance tests. Results are now automatically updated in the summary table in K6_PERFORMANCE.md.
+
+**⚠️ Important:** All test results are from **multi-instance setup** (2 app instances behind nginx load balancer) testing distributed locks across instances.
 
 **Related Documentation:**
 - **[README](../README.md)** - Project overview and quick start

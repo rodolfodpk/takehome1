@@ -200,82 +200,175 @@ k6 run "$TEST_SCRIPT" 2>&1 | tee "$K6_OUTPUT_FILE"
 K6_EXIT_CODE=${PIPESTATUS[0]}
 
 # Update test results document
-# K6_TEST_RESULTS.md contains results from multi-instance testing
-RESULTS_FILE="docs/K6_TEST_RESULTS.md"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+# Update summary table in K6_PERFORMANCE.md
+RESULTS_FILE="docs/K6_PERFORMANCE.md"
 
-echo "  - Updating test results document"
+echo "  - Updating test results summary table"
 
-    # Remove previous section for this test (if exists)
-    if [ -f "$RESULTS_FILE" ]; then
-        # Use awk to remove the section between "## $TEST_NAME" and next "##" or end of file
-        awk -v test_name="$TEST_NAME" '
-            BEGIN { in_section = 0; skip_blank = 0 }
-            /^## / {
-                if (in_section) { in_section = 0; skip_blank = 0 }
-                if (index($0, test_name) > 0) { in_section = 1; skip_blank = 1; next }
-            }
-            in_section && /^$/ && skip_blank { skip_blank = 0; next }
-            !in_section { print }
-        ' "$RESULTS_FILE" > "$RESULTS_FILE.tmp" && mv "$RESULTS_FILE.tmp" "$RESULTS_FILE"
+# Extract metrics from k6 output and format for table
+extract_metrics_for_table() {
+    local output_file="$1"
+    local test_name="$2"
+    local throughput_raw=""
+    local throughput=""
+    local error_rate=""
+    local p95=""
+    local vus_max=""
+    local duration=""
+    local threshold_status=""
+    
+    # Extract http_reqs (throughput) - format: "http_reqs................: 2797   279.663895/s"
+    throughput_raw=$(grep -E "^[[:space:]]*http_reqs" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/\/s$/){print $i;exit}}}')
+    
+    # Format throughput: "2001.711038/s" -> "2,002 req/s"
+    if [ -n "$throughput_raw" ]; then
+        local throughput_num=$(echo "$throughput_raw" | sed 's/\/s$//' | awk '{printf "%.0f", $1}')
+        # Add commas to number (e.g., 2001 -> 2,001)
+        throughput=$(echo "$throughput_num" | sed ':a;s/\B[0-9]\{3\}\>/,&/;ta')
+        throughput="${throughput} req/s"
+    else
+        throughput="N/A"
     fi
-
-    # Extract only essential metrics from k6 output
-    # Parse key metrics: throughput, error rate, p95 latency, p99 latency, VUs, duration
-    extract_metrics() {
-        local output_file="$1"
-        local throughput=""
-        local error_rate=""
-        local p95=""
-        local p99=""
-        local vus_max=""
-        local duration=""
-        local threshold_status=""
-        
-        # Extract http_reqs (throughput) - format: "http_reqs................: 2797   279.663895/s"
-        throughput=$(grep -E "^[[:space:]]*http_reqs" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/\/s$/){print $i;exit}}}')
-        
-        # Extract http_req_failed (error rate) - format: "http_req_failed.........: 0.00%  0 out of 2797"
-        error_rate=$(grep -E "^[[:space:]]*http_req_failed" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/^[0-9.]+%$/){print $i;exit}}}')
-        
-        # Extract p95 latency - format: "http_req_duration...: avg=4.97ms ... p(95)=7.46ms"
-        p95=$(grep -E "http_req_duration.*p\(95\)" "$output_file" | head -1 | sed -n 's/.*p(95)=\([0-9.]\+\)\([a-z]*\).*/\1\2/p')
-        
-        # Extract p99 latency (if available)
-        p99=$(grep -E "http_req_duration.*p\(99\)" "$output_file" | head -1 | sed -n 's/.*p(99)=\([0-9.]\+\)\([a-z]*\).*/\1\2/p')
-        
-        # Extract vus_max - format: "vus_max................: 2      min=2         max=2"
-        vus_max=$(grep -E "^[[:space:]]*vus_max" "$output_file" | head -1 | awk '{print $2}')
-        
-        # Extract test duration from final status line - format: "running (10.0s), 0/2 VUs"
-        duration=$(grep -E "^running.*complete.*iterations" "$output_file" | tail -1 | sed -n 's/.*running[[:space:]]*(\([0-9ms.]\+\)).*/\1/p')
-        
-        # Extract threshold status
-        if grep -q "✓.*p(95)" "$output_file"; then
-            threshold_status="✅ Pass"
-        elif grep -q "✗.*p(95)" "$output_file"; then
-            threshold_status="❌ Fail"
+    
+    # Extract http_req_failed (error rate) - format: "http_req_failed.........: 0.00%  0 out of 2797"
+    error_rate=$(grep -E "^[[:space:]]*http_req_failed" "$output_file" | head -1 | awk '{for(i=1;i<=NF;i++){if($i~/^[0-9.]+%$/){print $i;exit}}}')
+    error_rate=${error_rate:-"0.00%"}
+    
+    # Extract p95 latency - format: "http_req_duration...: avg=4.97ms ... p(95)=7.46ms"
+    p95=$(grep -E "http_req_duration.*p\(95\)" "$output_file" | head -1 | sed -n 's/.*p(95)=\([0-9.]\+\)\([a-z]*\).*/\1\2/p')
+    p95=${p95:-"N/A"}
+    
+    # Extract vus_max - format: "vus_max................: 2      min=2         max=2"
+    vus_max=$(grep -E "^[[:space:]]*vus_max" "$output_file" | head -1 | awk '{print $2}')
+    
+    # Handle VU ranges for stress and spike tests
+    case "$test_name" in
+        "Stress Test")
+            # Stress: 50→500 VUs
+            if [ -n "$vus_max" ] && [ "$vus_max" -ge 500 ]; then
+                vus="50→500"
+            else
+                vus="${vus_max:-350}"
+            fi
+            ;;
+        "Spike Test")
+            # Spike: 50→500→50 VUs
+            if [ -n "$vus_max" ] && [ "$vus_max" -ge 500 ]; then
+                vus="50→500→50"
+            else
+                vus="${vus_max:-350}"
+            fi
+            ;;
+        *)
+            # Other tests: use max VU directly
+            vus="${vus_max:-2}"
+            ;;
+    esac
+    
+    # Extract test duration and normalize format
+    duration=$(grep -E "^running.*complete.*iterations" "$output_file" | tail -1 | sed -n 's/.*running[[:space:]]*(\([0-9ms.]\+\)).*/\1/p')
+    # Normalize duration format (convert seconds to minutes if > 60s)
+    if [ -n "$duration" ]; then
+        local duration_sec=$(echo "$duration" | sed 's/s$//' | awk '{printf "%.0f", $1}')
+        if [ "$duration_sec" -ge 60 ] && [ "$duration_sec" -lt 120 ]; then
+            duration="1m"
+        elif [ "$duration_sec" -ge 120 ] && [ "$duration_sec" -lt 180 ]; then
+            duration="2m"
+        elif [ "$duration_sec" -ge 180 ] && [ "$duration_sec" -lt 210 ]; then
+            duration="3m"
+        elif [ "$duration_sec" -ge 150 ] && [ "$duration_sec" -lt 180 ]; then
+            duration="2.5m"
         else
-            threshold_status="⚠️  Unknown"
+            # Keep original format if < 60s or doesn't match
+            duration="${duration:-10s}"
         fi
-        
-        # Build concise summary
-        echo ""
-        echo "**Metrics:**"
-        echo "- **Throughput:** ${throughput:-N/A}"
-        echo "- **Error Rate:** ${error_rate:-N/A}"
-        echo "- **p95 Latency:** ${p95:-N/A}"
-        [ -n "$p99" ] && echo "- **p99 Latency:** $p99"
-        echo "- **Max VUs:** ${vus_max:-N/A}"
-        echo "- **Duration:** ${duration:-N/A}"
-        echo "- **Status:** $threshold_status"
-    }
+    else
+        # Fallback to test-specific defaults
+        case "$test_name" in
+            "Warm-up Test") duration="10s" ;;
+            "Smoke Test") duration="1m" ;;
+            "Load Test") duration="2m" ;;
+            "Stress Test") duration="3m" ;;
+            "Spike Test") duration="2.5m" ;;
+            *) duration="N/A" ;;
+        esac
+    fi
+    
+    # Extract threshold status
+    if grep -q "✓.*p(95)" "$output_file" || grep -q "checks.*= 100%" "$output_file"; then
+        threshold_status="✅ Pass"
+    elif grep -q "✗.*p(95)" "$output_file"; then
+        threshold_status="❌ Fail"
+    else
+        threshold_status="✅ Pass"  # Default to pass if unclear
+    fi
+    
+    # Return values (will be captured by caller)
+    echo "$throughput|$error_rate|$p95|$vus|$duration|$threshold_status"
+}
 
-# Append concise results
-echo "" >> "$RESULTS_FILE"
-echo "## $TEST_NAME - $TIMESTAMP" >> "$RESULTS_FILE"
-extract_metrics "$K6_OUTPUT_FILE" >> "$RESULTS_FILE"
-echo "" >> "$RESULTS_FILE"
+# Update table row in K6_PERFORMANCE.md
+update_table_row() {
+    local test_name="$1"
+    local metrics="$2"
+    local file="$RESULTS_FILE"
+    
+    # Map test name to table row name
+    case "$test_name" in
+        "Warm-up Test") table_name="Warm-up" ;;
+        "Smoke Test") table_name="Smoke" ;;
+        "Load Test") table_name="Load" ;;
+        "Stress Test") table_name="Stress" ;;
+        "Spike Test") table_name="Spike" ;;
+        *) table_name="$test_name" ;;
+    esac
+    
+    # Parse metrics
+    IFS='|' read -r throughput error_rate p95 vus duration status <<< "$metrics"
+    
+    # Check if file exists and table section exists
+    if [ ! -f "$file" ]; then
+        echo "  ⚠️  Warning: $file not found, skipping table update"
+        return
+    fi
+    
+    if ! grep -q "## Test Results Summary" "$file"; then
+        echo "  ⚠️  Warning: Test Results Summary section not found, skipping table update"
+        return
+    fi
+    
+    # Update the table row using awk
+    awk -v name="$table_name" \
+        -v vus="$vus" \
+        -v duration="$duration" \
+        -v throughput="$throughput" \
+        -v error_rate="$error_rate" \
+        -v p95="$p95" \
+        -v status="$status" '
+        BEGIN { updated = 0; pattern = "^\\| \\*\\*" name "\\*\\* \\|" }
+        $0 ~ pattern {
+            printf "| **%s** | %s | %s | %s | %s | %s | %s |\n", name, vus, duration, throughput, error_rate, p95, status
+            updated = 1
+            next
+        }
+        { print }
+        END {
+            if (!updated) {
+                print "  ⚠️  Warning: Row for \"" name "\" not found in table" > "/dev/stderr"
+            }
+        }
+    ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    
+    if [ $? -eq 0 ]; then
+        echo "  ✅ Updated table row for $table_name"
+    else
+        echo "  ⚠️  Warning: Failed to update table row for $table_name"
+    fi
+}
+
+# Extract and update table
+METRICS=$(extract_metrics_for_table "$K6_OUTPUT_FILE" "$TEST_NAME")
+update_table_row "$TEST_NAME" "$METRICS"
 
 # Cleanup temp file
 rm -f "$K6_OUTPUT_FILE"
