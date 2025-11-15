@@ -256,7 +256,7 @@ scrape_configs:
 
 ### Critical Metrics
 
-1. **Throughput**: `rate(metering_events_ingested_total[1m])` - Target: ≥ 2,000/s (tested up to 3,700+ events/second)
+1. **Throughput**: `rate(metering_events_ingested_total[1m])` - See [K6 Performance Testing](K6_PERFORMANCE.md) for current performance metrics
 2. **P99 Latency**: `metering_events_processing_latency_seconds{quantile="0.99"}` - Must be < 100ms
 3. **Error Rate**: `rate(metering_events_ingestion_errors_total[1m])` - Should be < 0.1%
 4. **Redis Latency**: `metering_redis_storage_latency_seconds{quantile="0.95"}` - Should be < 10ms
@@ -408,7 +408,7 @@ metering_events_ingested_total{type="total"} 10000.0
 - Retry attempts: Minimal
 
 **Business Metrics:**
-- Events/second: ≥ 2,000 (target met, tested up to 3,700+ events/second under stress)
+- Events/second: See [K6 Performance Testing](K6_PERFORMANCE.md) for current performance metrics
 - Processing latency P99: < 100ms
 - Redis latency P95: < 10ms
 - DB persistence latency P95: < 50ms
@@ -447,7 +447,7 @@ Potential alert conditions:
 - Response time p95 > 1s
 - Memory usage > 90%
 - Database connection pool exhausted
-- Events/second < 8,000 (20% below target)
+- Events/second dropping significantly (check [K6 Performance Testing](K6_PERFORMANCE.md) for baseline)
 - Processing latency P99 > 100ms
 - Lock contention > 10%
 

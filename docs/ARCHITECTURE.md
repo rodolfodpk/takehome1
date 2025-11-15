@@ -4,7 +4,7 @@ Real-Time API Metering & Aggregation Engine - System Architecture
 
 ## Architecture Overview
 
-The application follows a **package-per-layer** architecture pattern optimized for high-throughput reactive processing. The system is designed to handle 2,000+ events/second per instance (tested up to 3,700+ events/second under stress) using a fully reactive stack (WebFlux + R2DBC).
+The application follows a **package-per-layer** architecture pattern optimized for high-throughput reactive processing. See [K6 Performance Testing](K6_PERFORMANCE.md) for current performance metrics. Latest results show sustained throughput of 5,000+ requests/second under load and peaks up to 13,000+ requests/second under stress across 2 instances. Uses a fully reactive stack (WebFlux + R2DBC).
 
 ```
 src/main/kotlin/com/rdpk/metering/
@@ -170,6 +170,155 @@ src/main/kotlin/com/rdpk/metering/
    - Persists to `usage_events` table
    - Updates or creates aggregation window
    - Deletes processed late event
+
+## API Contract
+
+### Event Ingestion Endpoint
+
+**Endpoint**: `POST /api/v1/events`
+
+**Request Body**: `UsageEventRequest`
+
+```json
+{
+  "eventId": "event-123",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "tenantId": "1",
+  "customerId": "customer-1",
+  "apiEndpoint": "/api/completion",
+  "metadata": {
+    "inputTokens": 500,
+    "outputTokens": 1000,
+    "tokens": 1500,
+    "model": "gpt-4",
+    "latencyMs": 234
+  }
+}
+```
+
+**Request Fields**:
+- `eventId` (String, required) - Unique event identifier
+- `timestamp` (Instant, required) - Event timestamp in ISO-8601 format
+- `tenantId` (String, required) - Tenant identifier
+- `customerId` (String, required) - Customer identifier (external ID)
+- `apiEndpoint` (String, required) - API endpoint that was called
+- `metadata` (EventMetadata, required) - Contains:
+  - `inputTokens` (Int, required) - Number of input tokens consumed
+  - `outputTokens` (Int, required) - Number of output tokens generated
+  - `tokens` (Int, optional) - Total tokens (fallback)
+  - `model` (String, optional) - Model name used for the request
+  - `latencyMs` (Int, optional) - Request latency in milliseconds
+
+**Response**: `UsageEventResponse` (HTTP 201 CREATED)
+
+```json
+{
+  "eventId": "event-123",
+  "status": "processed",
+  "processedAt": "2024-01-01T00:00:00.123Z"
+}
+```
+
+**Response Fields**:
+- `eventId` (String) - Echo of request eventId
+- `status` (String) - Processing status
+- `processedAt` (Instant) - Processing timestamp
+
+### Aggregation Result Structure
+
+The `AggregationResult` structure is used internally for aggregation windows (stored in `aggregation_windows` table):
+
+```json
+{
+  "totalCalls": 1000,
+  "totalTokens": 500000,
+  "totalInputTokens": 200000,
+  "totalOutputTokens": 300000,
+  "avgLatencyMs": 234.5,
+  "byEndpoint": {
+    "/api/completion": {
+      "calls": 500,
+      "tokens": 250000
+    }
+  },
+  "byModel": {
+    "gpt-4": {
+      "calls": 300,
+      "tokens": 150000
+    }
+  }
+}
+```
+
+**Fields**:
+- `totalCalls` (Long) - Total number of events
+- `totalTokens` (Long) - Total tokens across all events
+- `totalInputTokens` (Long) - Total input tokens
+- `totalOutputTokens` (Long) - Total output tokens
+- `avgLatencyMs` (Double, nullable) - Average latency in milliseconds
+- `byEndpoint` (Map<String, EndpointStats>) - Aggregation by API endpoint
+- `byModel` (Map<String, ModelStats>) - Aggregation by model
+
+## Error Handling
+
+### HTTP Status Codes
+
+- `201 CREATED` - Event processed successfully
+- `400 BAD_REQUEST` - Invalid request data (validation errors)
+- `404 NOT_FOUND` - Tenant or customer not found
+- `500 INTERNAL_SERVER_ERROR` - Unexpected server error
+
+### Error Response Format
+
+All error responses follow the `ErrorResponse` structure:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid request data",
+  "details": [
+    "eventId: eventId is required",
+    "metadata.inputTokens: inputTokens is required for token tracking"
+  ]
+}
+```
+
+**Error Response Fields**:
+- `code` (String) - Error code (e.g., "VALIDATION_ERROR", "INVALID_ARGUMENT", "INTERNAL_ERROR")
+- `message` (String) - Human-readable error message
+- `details` (List<String>) - List of validation errors or additional details
+
+### Error Scenarios
+
+**Validation Error (400)**:
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid request data",
+  "details": [
+    "eventId: eventId is required",
+    "tenantId: tenantId cannot be blank"
+  ]
+}
+```
+
+**Tenant/Customer Not Found (404)**:
+```json
+{
+  "code": "INVALID_ARGUMENT",
+  "message": "Tenant not found or inactive",
+  "details": []
+}
+```
+
+**Internal Server Error (500)**:
+```json
+{
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred",
+  "details": []
+}
+```
 
 ## Design Decisions
 
@@ -553,7 +702,7 @@ See **[Observability Documentation](OBSERVABILITY.md)** for details.
 
 ## Performance Characteristics
 
-- **Throughput**: 2,000+ events/second per instance (tested up to 3,700+ events/second under stress)
+- **Throughput**: See [K6 Performance Testing](K6_PERFORMANCE.md) for current metrics. Latest results show sustained throughput of 5,000+ requests/second under load and peaks up to 13,000+ requests/second under stress across 2 instances.
 - **Latency**: P99 < 100ms, P50 < 10ms
 - **Processing**: <1ms per event (hot path)
 - **Batching**: 500-1000 events per batch (cold path)
